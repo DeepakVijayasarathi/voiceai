@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Indic Fast TTS</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #e6e8eb;
+    --muted: #9aa3b2; --accent: #4f8cff; --accent-hover: #6fa0ff;
+    --error: #ff5d5d; --ok: #3ecf8e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f5f6f8; --panel: #ffffff; --border: #e1e4e9; --text: #14161a;
+      --muted: #5b6472; --accent: #2f6fed; --accent-hover: #1e5cd8; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px;
+  }
+  body > div { width: 100%; max-width: 640px; }
+  .card { width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
+  textarea, select, input[type=text], input[type=password] {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 90px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .row2 { display: flex; gap: 12px; align-items: center; }
+  input[type=range] { width: 100%; }
+  button {
+    margin-top: 22px; width: 100%; background: var(--accent); color: white; border: none;
+    border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { margin-top: 14px; font-size: 13px; min-height: 18px; }
+  .status.error { color: var(--error); }
+  .status.ok { color: var(--ok); }
+  audio { width: 100%; margin-top: 14px; display: none; }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 6px; display: none; }
+  details { margin-top: 18px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .apikey-row { margin-top: 10px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .svc-card { width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px 28px; margin-top: 16px; }
+  .svc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .svc-head h2 { font-size: 15px; margin: 0; }
+  .svc-refresh { width: auto; margin: 0; padding: 6px 12px; font-size: 12px; font-weight: 500; }
+  .svc-list { display: flex; flex-direction: column; gap: 10px; }
+  .svc-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+  .dot.up { background: var(--ok); }
+  .dot.down { background: var(--error); }
+  .dot.pending { background: var(--muted); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .svc-name { font-weight: 600; min-width: 110px; }
+  .svc-port { color: var(--muted); font-size: 12px; min-width: 50px; }
+  .svc-detail { color: var(--muted); font-size: 12px; flex: 1; }
+  .svc-time { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab { flex: 1; text-align: center; padding: 10px; font-size: 13px; font-weight: 600;
+    color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .pane { display: none; }
+  .pane.active { display: block; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+  .checkbox-row input { width: auto; }
+  .checkbox-row label { margin: 0; font-size: 13px; color: var(--text); }
+  input[type=file] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .file-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .usp-banner { background: linear-gradient(135deg, rgba(79,140,255,.12), rgba(79,140,255,.03));
+    border: 1px solid rgba(79,140,255,.3); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+  .usp-banner .usp-title { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4px; }
+  .usp-banner p { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; }
+
+  .subtabs { display: flex; gap: 4px; margin-bottom: 18px; background: var(--bg); border-radius: 8px; padding: 3px; }
+  .subtab { flex: 1; text-align: center; padding: 8px; font-size: 12.5px; font-weight: 600;
+    color: var(--muted); cursor: pointer; border-radius: 6px; }
+  .subtab.active { color: white; background: var(--accent); }
+  .subpane { display: none; }
+  .subpane.active { display: block; }
+
+  .story-output { margin-top: 14px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 13.5px; line-height: 1.6; display: none; max-height: 220px; overflow-y: auto; }
+  .story-output .story-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .04em; margin-bottom: 6px; }
+
+  .list-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
+  .list-row .list-main { flex: 1; min-width: 0; }
+  .list-row .list-title { font-weight: 600; margin-bottom: 2px; }
+  .list-row .list-sub { color: var(--muted); font-size: 12px; }
+  .list-row button { margin: 0; width: auto; padding: 6px 12px; font-size: 12px; flex-shrink: 0; }
+  .list-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px 0; }
+  .inline-form { margin-top: 10px; padding: 10px; background: var(--bg); border-radius: 8px; display: none; }
+  .inline-form textarea { min-height: 60px; }
+  .inline-form button { margin-top: 8px; }
+</style>
+</head>
+<body>
+<div>
+<div class="card">
+  <h1>Indic Fast TTS</h1>
+  <p class="sub">MMS-TTS (VITS), 11 languages, CPU-only low-latency synthesis</p>
+
+  <div class="tabs">
+    <div class="tab active" data-pane="genPane">Generate</div>
+    <div class="tab" data-pane="clonePane">Clone voice</div>
+    <div class="tab" data-pane="storyPane">Story Tools</div>
+  </div>
+
+  <div id="genPane" class="pane active">
+  <label for="text">Text</label>
+  <textarea id="text" placeholder="Type text in any supported language, or mix in English words...">நமஸ்தே, இன்று வானிலை மிகவும் அழகாக உள்ளது.</textarea>
+
+  <div class="row">
+    <div>
+      <label for="language">Language</label>
+      <select id="language">
+        <option value="">Auto-detect</option>
+        <option value="tam">Tamil</option>
+        <option value="hin">Hindi</option>
+        <option value="tel">Telugu</option>
+        <option value="mal">Malayalam</option>
+        <option value="kan">Kannada</option>
+        <option value="mar">Marathi</option>
+        <option value="guj">Gujarati</option>
+        <option value="ben">Bengali</option>
+        <option value="pan">Punjabi</option>
+        <option value="ory">Odia</option>
+        <option value="asm">Assamese</option>
+      </select>
+    </div>
+    <div>
+      <label for="emotion">Emotion / genre</label>
+      <select id="emotion">
+        <option value="">None</option>
+        <option value="auto">Auto-detect (via OpenAI)</option>
+        <option value="neutral">Neutral</option>
+        <option value="happy">Happy</option>
+        <option value="sad">Sad</option>
+        <option value="excited">Excited</option>
+        <option value="calm">Calm</option>
+        <option value="horror">Horror</option>
+        <option value="romance">Romance</option>
+        <option value="action">Action</option>
+        <option value="comedy">Comedy</option>
+        <option value="devotional">Devotional</option>
+        <option value="mystery">Mystery</option>
+      </select>
+    </div>
+  </div>
+
+  <label for="speed">Speed: <span id="speedVal">1.0x</span></label>
+  <div class="row2">
+    <input type="range" id="speed" min="0.5" max="2.0" step="0.05" value="1.0">
+  </div>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="bgm">
+    <label for="bgm">Add background ambience (mood-matched, procedurally generated - not licensed music)</label>
+  </div>
+
+  <button id="genBtn">Generate speech</button>
+  <div id="status" class="status"></div>
+  <audio id="player" controls></audio>
+  <div id="meta" class="meta"></div>
+  </div>
+
+  <div id="clonePane" class="pane">
+    <label for="refAudio">Reference voice (short audio clip)</label>
+    <input type="file" id="refAudio" accept="audio/*">
+    <div class="file-hint">The voice to clone from. A few seconds of clear speech works best.</div>
+
+    <label for="refText">Reference transcript</label>
+    <textarea id="refText" placeholder="Exact text spoken in the reference clip above..."></textarea>
+
+    <label for="cloneText">Text to speak in the cloned voice</label>
+    <textarea id="cloneText" placeholder="What should the cloned voice say?"></textarea>
+
+    <div class="hint" style="margin-top: 12px;">Cloning proxies to the separate IndicF5 service and takes 30-70s (that model is much slower - see /health on port 8604 for why) - this is not a bug, cloning voice quality and speed are a real tradeoff.</div>
+
+    <button id="cloneBtn">Clone voice</button>
+    <div id="cloneStatus" class="status"></div>
+    <audio id="clonePlayer" controls></audio>
+    <div id="cloneMeta" class="meta"></div>
+  </div>
+
+  <div id="storyPane" class="pane">
+    <div class="usp-banner">
+      <div class="usp-title">What makes this different</div>
+      <p>Characters persist. Describe a scene once, and named characters are automatically saved with their personality and backstory - pull them into new settings later ("Character Resurrection"), or branch any story from a changed decision and get a consistent continuation ("Story Time Machine"). Villains aren't generic - they're built around the specific fears you describe.</p>
+    </div>
+
+    <div class="subtabs">
+      <div class="subtab active" data-subpane="dreamSub">Dream to Story</div>
+      <div class="subtab" data-subpane="villainSub">Villain</div>
+      <div class="subtab" data-subpane="browseSub">Browse &amp; Continue</div>
+    </div>
+
+    <div id="dreamSub" class="subpane active">
+      <label for="dreamDesc">Describe a dream, memory, or scene</label>
+      <textarea id="dreamDesc" placeholder="I dreamed I was walking through an old village at dusk...">A detective named Vikram investigates a locked-room murder in an old mansion, helped by his sharp-witted assistant Priya.</textarea>
+      <label for="dreamLang">Language</label>
+      <select id="dreamLang">
+        <option value="hin">Hindi</option>
+        <option value="tam">Tamil</option>
+        <option value="tel">Telugu</option>
+        <option value="mal">Malayalam</option>
+        <option value="kan">Kannada</option>
+        <option value="mar">Marathi</option>
+        <option value="guj">Gujarati</option>
+        <option value="ben">Bengali</option>
+        <option value="pan">Punjabi</option>
+        <option value="ory">Odia</option>
+        <option value="asm">Assamese</option>
+      </select>
+      <div class="hint" style="margin-top: 10px;">Named characters are automatically extracted and saved - find them under "Browse &amp; Continue" afterward.</div>
+      <button id="dreamBtn">Generate story</button>
+      <div id="dreamStatus" class="status"></div>
+      <div id="dreamOutput" class="story-output"><div class="story-label">Generated story</div><div id="dreamOutputText"></div></div>
+      <audio id="dreamPlayer" controls></audio>
+      <div id="dreamMeta" class="meta"></div>
+    </div>
+
+    <div id="villainSub" class="subpane">
+      <label for="villainFears">Listener's fears / anxieties / motivations</label>
+      <textarea id="villainFears" placeholder="Being trapped in small enclosed spaces, losing control over decisions...">being trapped in small enclosed spaces with no way out, and losing control over one's own decisions</textarea>
+      <label for="villainLang">Language</label>
+      <select id="villainLang">
+        <option value="hin">Hindi</option>
+        <option value="tam">Tamil</option>
+        <option value="tel">Telugu</option>
+        <option value="mal">Malayalam</option>
+        <option value="kan">Kannada</option>
+        <option value="mar">Marathi</option>
+        <option value="guj">Gujarati</option>
+        <option value="ben">Bengali</option>
+        <option value="pan">Punjabi</option>
+        <option value="ory">Odia</option>
+        <option value="asm">Assamese</option>
+      </select>
+      <div class="hint" style="margin-top: 10px;">Built from what you describe here, not learned from listening history - no such history is tracked.</div>
+      <button id="villainBtn">Generate villain</button>
+      <div id="villainStatus" class="status"></div>
+      <div id="villainOutput" class="story-output"><div class="story-label" id="villainNameLabel">Villain</div><div id="villainOutputText"></div></div>
+      <audio id="villainPlayer" controls></audio>
+      <div id="villainMeta" class="meta"></div>
+    </div>
+
+    <div id="browseSub" class="subpane">
+      <div class="row2" style="justify-content: space-between; margin-bottom: 4px;">
+        <label style="margin:0;">Saved stories</label>
+        <button id="refreshStoriesBtn" class="svc-refresh" style="margin:0;">Refresh</button>
+      </div>
+      <div id="storyList"></div>
+
+      <label style="margin-top: 24px;">Saved characters</label>
+      <div id="characterList"></div>
+    </div>
+  </div>
+
+  <details>
+    <summary>API key</summary>
+    <div class="apikey-row">
+      <input type="password" id="apiKey" placeholder="x-api-key">
+      <div class="hint">Stored only in this browser's local storage, sent as the x-api-key header.</div>
+    </div>
+  </details>
+</div>
+
+<div class="svc-card">
+  <div class="svc-head">
+    <h2>Services</h2>
+    <button id="refreshBtn" class="svc-refresh">Refresh</button>
+  </div>
+  <div id="svcList" class="svc-list"></div>
+</div>
+</div>
+
+<script>
+const SERVICES = [
+  { name: "Indic Fast TTS", port: 8604, path: "/health", format: (d) => `${d.languages_loaded?.length ?? "?"} languages · ${d.cpu_threads} threads` },
+  { name: "IndicF5", port: 8600, path: "/health", format: (d) => `model loaded: ${d.model_loaded} · ${d.cpu_count} cores` },
+  { name: "IndicXlit", port: 8602, path: "/health", format: () => "transliteration service" },
+  { name: "Whisper STT", port: 8603, path: "/health", format: (d) => `model loaded: ${d.model_loaded}` },
+];
+
+async function checkService(svc, rowEl) {
+  const dot = rowEl.querySelector(".dot");
+  const detail = rowEl.querySelector(".svc-detail");
+  const time = rowEl.querySelector(".svc-time");
+  dot.className = "dot pending";
+  const t0 = performance.now();
+  try {
+    const resp = await fetch(`http://178.104.214.191:${svc.port}${svc.path}`, { signal: AbortSignal.timeout(8000) });
+    const elapsed = Math.round(performance.now() - t0);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    dot.className = "dot up";
+    detail.textContent = svc.format(data);
+    time.textContent = `${elapsed}ms`;
+  } catch (err) {
+    const elapsed = Math.round(performance.now() - t0);
+    dot.className = "dot down";
+    detail.textContent = err.name === "TimeoutError" ? "timed out" : "unreachable";
+    time.textContent = `${elapsed}ms`;
+  }
+}
+
+function renderServices() {
+  const list = document.getElementById("svcList");
+  list.innerHTML = "";
+  for (const svc of SERVICES) {
+    const row = document.createElement("div");
+    row.className = "svc-row";
+    row.innerHTML = `
+      <span class="dot pending"></span>
+      <span class="svc-name">${svc.name}</span>
+      <span class="svc-port">:${svc.port}</span>
+      <span class="svc-detail">checking...</span>
+      <span class="svc-time"></span>
+    `;
+    list.appendChild(row);
+    checkService(svc, row);
+  }
+}
+
+document.getElementById("refreshBtn").addEventListener("click", renderServices);
+renderServices();
+</script>
+
+<script>
+const API_BASE = "http://178.104.214.191:8604";
+const $ = (id) => document.getElementById(id);
+
+$("speed").addEventListener("input", () => {
+  $("speedVal").textContent = parseFloat($("speed").value).toFixed(2) + "x";
+});
+
+const savedKey = localStorage.getItem("indic_tts_api_key");
+if (savedKey) $("apiKey").value = savedKey;
+
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".pane").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    $(tab.dataset.pane).classList.add("active");
+  });
+});
+
+document.querySelectorAll(".subtab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const group = tab.closest(".pane");
+    group.querySelectorAll(".subtab").forEach((t) => t.classList.remove("active"));
+    group.querySelectorAll(".subpane").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    $(tab.dataset.subpane).classList.add("active");
+  });
+});
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function b64ToUtf8(b64) {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function authHeaders() {
+  const apiKey = $("apiKey").value.trim();
+  return apiKey ? { "x-api-key": apiKey } : {};
+}
+
+$("genBtn").addEventListener("click", async () => {
+  const text = $("text").value.trim();
+  const statusEl = $("status");
+  const player = $("player");
+  const meta = $("meta");
+  statusEl.className = "status";
+  statusEl.textContent = "";
+  meta.style.display = "none";
+  player.style.display = "none";
+
+  if (!text) {
+    statusEl.className = "status error";
+    statusEl.textContent = "Enter some text first.";
+    return;
+  }
+
+  const apiKey = $("apiKey").value.trim();
+  localStorage.setItem("indic_tts_api_key", apiKey);
+
+  const body = {
+    text,
+    speed: parseFloat($("speed").value),
+    bgm: $("bgm").checked,
+  };
+  if ($("language").value) body.language = $("language").value;
+  if ($("emotion").value) body.emotion = $("emotion").value;
+
+  $("genBtn").disabled = true;
+  statusEl.textContent = "Generating...";
+  const t0 = performance.now();
+
+  try {
+    const resp = await fetch(API_BASE + "/tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "x-api-key": apiKey } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      let detail = resp.statusText;
+      try { detail = (await resp.json()).detail || detail; } catch (e) {}
+      throw new Error(`${resp.status}: ${detail}`);
+    }
+
+    const blob = await resp.blob();
+    const elapsedMs = Math.round(performance.now() - t0);
+    const url = URL.createObjectURL(blob);
+    player.src = url;
+    player.style.display = "block";
+    player.play().catch(() => {});
+
+    statusEl.className = "status ok";
+    statusEl.textContent = "Done.";
+    meta.style.display = "block";
+    meta.textContent = `Request time: ${elapsedMs}ms · ${(blob.size / 1024).toFixed(1)} KB`;
+  } catch (err) {
+    statusEl.className = "status error";
+    statusEl.textContent = err.message || String(err);
+  } finally {
+    $("genBtn").disabled = false;
+  }
+});
+
+$("cloneBtn").addEventListener("click", async () => {
+  const statusEl = $("cloneStatus");
+  const player = $("clonePlayer");
+  const meta = $("cloneMeta");
+  statusEl.className = "status";
+  statusEl.textContent = "";
+  meta.style.display = "none";
+  player.style.display = "none";
+
+  const file = $("refAudio").files[0];
+  const refText = $("refText").value.trim();
+  const cloneText = $("cloneText").value.trim();
+
+  if (!file || !refText || !cloneText) {
+    statusEl.className = "status error";
+    statusEl.textContent = "Reference audio, reference transcript, and target text are all required.";
+    return;
+  }
+
+  const apiKey = $("apiKey").value.trim();
+  localStorage.setItem("indic_tts_api_key", apiKey);
+
+  $("cloneBtn").disabled = true;
+  statusEl.textContent = "Cloning (30-70s, this is expected)...";
+  const t0 = performance.now();
+
+  try {
+    const refAudioB64 = await fileToBase64(file);
+    const resp = await fetch(API_BASE + "/clone", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "x-api-key": apiKey } : {}),
+      },
+      body: JSON.stringify({ text: cloneText, ref_audio_b64: refAudioB64, ref_text: refText }),
+    });
+
+    if (!resp.ok) {
+      let detail = resp.statusText;
+      try { detail = (await resp.json()).detail || detail; } catch (e) {}
+      throw new Error(`${resp.status}: ${detail}`);
+    }
+
+    const blob = await resp.blob();
+    const elapsedMs = Math.round(performance.now() - t0);
+    const url = URL.createObjectURL(blob);
+    player.src = url;
+    player.style.display = "block";
+    player.play().catch(() => {});
+
+    statusEl.className = "status ok";
+    statusEl.textContent = "Done.";
+    meta.style.display = "block";
+    meta.textContent = `Request time: ${(elapsedMs / 1000).toFixed(1)}s · ${(blob.size / 1024).toFixed(1)} KB`;
+  } catch (err) {
+    statusEl.className = "status error";
+    statusEl.textContent = err.message || String(err);
+  } finally {
+    $("cloneBtn").disabled = false;
+  }
+});
+
+$("dreamBtn").addEventListener("click", async () => {
+  const description = $("dreamDesc").value.trim();
+  const statusEl = $("dreamStatus");
+  const output = $("dreamOutput");
+  const player = $("dreamPlayer");
+  const meta = $("dreamMeta");
+  statusEl.className = "status";
+  statusEl.textContent = "";
+  output.style.display = "none";
+  player.style.display = "none";
+  meta.style.display = "none";
+
+  if (!description) {
+    statusEl.className = "status error";
+    statusEl.textContent = "Describe a dream, memory, or scene first.";
+    return;
+  }
+
+  localStorage.setItem("indic_tts_api_key", $("apiKey").value.trim());
+  $("dreamBtn").disabled = true;
+  statusEl.textContent = "Writing and narrating (this calls OpenAI, then synthesizes)...";
+  const t0 = performance.now();
+
+  try {
+    const resp = await fetch(API_BASE + "/dream-to-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ description, language: $("dreamLang").value }),
+    });
+    if (!resp.ok) {
+      let detail = resp.statusText;
+      try { detail = (await resp.json()).detail || detail; } catch (e) {}
+      throw new Error(`${resp.status}: ${detail}`);
+    }
+
+    const storyB64 = resp.headers.get("X-Story-Text-B64");
+    const storyId = resp.headers.get("X-Story-Id");
+    const charIds = resp.headers.get("X-Character-Ids");
+    const blob = await resp.blob();
+    const elapsedMs = Math.round(performance.now() - t0);
+
+    if (storyB64) {
+      $("dreamOutputText").textContent = b64ToUtf8(storyB64);
+      output.style.display = "block";
+    }
+    player.src = URL.createObjectURL(blob);
+    player.style.display = "block";
+    player.play().catch(() => {});
+
+    statusEl.className = "status ok";
+    statusEl.textContent = "Done.";
+    meta.style.display = "block";
+    const charNote = charIds ? ` · characters saved: ${charIds}` : " · no named characters found";
+    meta.textContent = `Story #${storyId} · ${(elapsedMs / 1000).toFixed(1)}s${charNote}`;
+  } catch (err) {
+    statusEl.className = "status error";
+    statusEl.textContent = err.message || String(err);
+  } finally {
+    $("dreamBtn").disabled = false;
+  }
+});
+
+$("villainBtn").addEventListener("click", async () => {
+  const fears = $("villainFears").value.trim();
+  const statusEl = $("villainStatus");
+  const output = $("villainOutput");
+  const player = $("villainPlayer");
+  const meta = $("villainMeta");
+  statusEl.className = "status";
+  statusEl.textContent = "";
+  output.style.display = "none";
+  player.style.display = "none";
+  meta.style.display = "none";
+
+  if (!fears) {
+    statusEl.className = "status error";
+    statusEl.textContent = "Describe the listener's fears first.";
+    return;
+  }
+
+  localStorage.setItem("indic_tts_api_key", $("apiKey").value.trim());
+  $("villainBtn").disabled = true;
+  statusEl.textContent = "Designing villain and narrating...";
+  const t0 = performance.now();
+
+  try {
+    const resp = await fetch(API_BASE + "/villain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ fears, language: $("villainLang").value }),
+    });
+    if (!resp.ok) {
+      let detail = resp.statusText;
+      try { detail = (await resp.json()).detail || detail; } catch (e) {}
+      throw new Error(`${resp.status}: ${detail}`);
+    }
+
+    const storyB64 = resp.headers.get("X-Story-Text-B64");
+    const nameB64 = resp.headers.get("X-Villain-Name-B64");
+    const storyId = resp.headers.get("X-Story-Id");
+    const blob = await resp.blob();
+    const elapsedMs = Math.round(performance.now() - t0);
+
+    if (nameB64) $("villainNameLabel").textContent = b64ToUtf8(nameB64);
+    if (storyB64) {
+      $("villainOutputText").textContent = b64ToUtf8(storyB64);
+      output.style.display = "block";
+    }
+    player.src = URL.createObjectURL(blob);
+    player.style.display = "block";
+    player.play().catch(() => {});
+
+    statusEl.className = "status ok";
+    statusEl.textContent = "Done.";
+    meta.style.display = "block";
+    meta.textContent = `Story #${storyId} · ${(elapsedMs / 1000).toFixed(1)}s`;
+  } catch (err) {
+    statusEl.className = "status error";
+    statusEl.textContent = err.message || String(err);
+  } finally {
+    $("villainBtn").disabled = false;
+  }
+});
+
+async function playAudioResponse(resp, statusEl) {
+  const storyB64 = resp.headers.get("X-Story-Text-B64");
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const audioEl = document.createElement("audio");
+  audioEl.controls = true;
+  audioEl.src = url;
+  audioEl.style.width = "100%";
+  audioEl.style.marginTop = "8px";
+  statusEl.after(audioEl);
+  audioEl.play().catch(() => {});
+  if (storyB64) {
+    const textDiv = document.createElement("div");
+    textDiv.className = "story-output";
+    textDiv.style.display = "block";
+    textDiv.textContent = b64ToUtf8(storyB64);
+    audioEl.after(textDiv);
+  }
+}
+
+async function loadStories() {
+  const listEl = $("storyList");
+  listEl.innerHTML = '<div class="list-empty">Loading...</div>';
+  try {
+    const resp = await fetch(API_BASE + "/stories", { headers: authHeaders() });
+    const data = await resp.json();
+    if (!data.stories || data.stories.length === 0) {
+      listEl.innerHTML = '<div class="list-empty">No stories yet - generate one under "Dream to Story".</div>';
+      return;
+    }
+    listEl.innerHTML = "";
+    for (const story of data.stories) {
+      const row = document.createElement("div");
+      row.className = "list-row";
+      const branchNote = story.parent_story_id ? ` · branched from #${story.parent_story_id}` : "";
+      row.innerHTML = `
+        <div class="list-main">
+          <div class="list-title">#${story.id}: ${story.title || "(untitled)"}</div>
+          <div class="list-sub">${story.language}${branchNote}</div>
+        </div>
+        <button data-action="branch" data-id="${story.id}">Branch</button>
+      `;
+      const form = document.createElement("div");
+      form.className = "inline-form";
+      form.innerHTML = `
+        <textarea placeholder="What changes at some point in this story?"></textarea>
+        <button>Generate branch</button>
+        <div class="status"></div>
+      `;
+      row.after(form);
+      row.querySelector("button").addEventListener("click", () => {
+        form.style.display = form.style.display === "block" ? "none" : "block";
+      });
+      const branchTextarea = form.querySelector("textarea");
+      const branchBtn = form.querySelector("button");
+      const branchStatus = form.querySelector(".status");
+      branchBtn.addEventListener("click", async () => {
+        const changed_decision = branchTextarea.value.trim();
+        if (!changed_decision) {
+          branchStatus.className = "status error";
+          branchStatus.textContent = "Describe the changed decision.";
+          return;
+        }
+        branchBtn.disabled = true;
+        branchStatus.className = "status";
+        branchStatus.textContent = "Generating branch...";
+        try {
+          const resp = await fetch(`${API_BASE}/stories/${story.id}/branch`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ changed_decision }),
+          });
+          if (!resp.ok) {
+            let detail = resp.statusText;
+            try { detail = (await resp.json()).detail || detail; } catch (e) {}
+            throw new Error(`${resp.status}: ${detail}`);
+          }
+          branchStatus.className = "status ok";
+          branchStatus.textContent = "Done.";
+          await playAudioResponse(resp, branchStatus);
+          loadStories();
+        } catch (err) {
+          branchStatus.className = "status error";
+          branchStatus.textContent = err.message || String(err);
+        } finally {
+          branchBtn.disabled = false;
+        }
+      });
+      listEl.appendChild(row);
+      listEl.appendChild(form);
+    }
+  } catch (err) {
+    listEl.innerHTML = `<div class="list-empty">Failed to load: ${err.message || err}</div>`;
+  }
+}
+
+async function loadCharacters() {
+  const listEl = $("characterList");
+  listEl.innerHTML = '<div class="list-empty">Loading...</div>';
+  try {
+    const resp = await fetch(API_BASE + "/characters", { headers: authHeaders() });
+    const data = await resp.json();
+    if (!data.characters || data.characters.length === 0) {
+      listEl.innerHTML = '<div class="list-empty">No characters yet - named characters are auto-saved from "Dream to Story".</div>';
+      return;
+    }
+    listEl.innerHTML = "";
+    for (const character of data.characters) {
+      const row = document.createElement("div");
+      row.className = "list-row";
+      row.innerHTML = `
+        <div class="list-main">
+          <div class="list-title">${character.name}</div>
+          <div class="list-sub">${character.personality || ""}</div>
+        </div>
+        <button data-action="revive" data-id="${character.id}">Revive</button>
+      `;
+      const form = document.createElement("div");
+      form.className = "inline-form";
+      form.innerHTML = `
+        <textarea placeholder="Describe the new setting/universe to place them in..."></textarea>
+        <button>Generate revival</button>
+        <div class="status"></div>
+      `;
+      row.after(form);
+      row.querySelector("button").addEventListener("click", () => {
+        form.style.display = form.style.display === "block" ? "none" : "block";
+      });
+      const setTextarea = form.querySelector("textarea");
+      const reviveBtn = form.querySelector("button");
+      const reviveStatus = form.querySelector(".status");
+      reviveBtn.addEventListener("click", async () => {
+        const new_setting = setTextarea.value.trim();
+        if (!new_setting) {
+          reviveStatus.className = "status error";
+          reviveStatus.textContent = "Describe the new setting.";
+          return;
+        }
+        reviveBtn.disabled = true;
+        reviveStatus.className = "status";
+        reviveStatus.textContent = "Reviving character...";
+        try {
+          const resp = await fetch(`${API_BASE}/characters/${character.id}/revive`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ new_setting }),
+          });
+          if (!resp.ok) {
+            let detail = resp.statusText;
+            try { detail = (await resp.json()).detail || detail; } catch (e) {}
+            throw new Error(`${resp.status}: ${detail}`);
+          }
+          reviveStatus.className = "status ok";
+          reviveStatus.textContent = "Done.";
+          await playAudioResponse(resp, reviveStatus);
+          loadStories();
+        } catch (err) {
+          reviveStatus.className = "status error";
+          reviveStatus.textContent = err.message || String(err);
+        } finally {
+          reviveBtn.disabled = false;
+        }
+      });
+      listEl.appendChild(row);
+      listEl.appendChild(form);
+    }
+  } catch (err) {
+    listEl.innerHTML = `<div class="list-empty">Failed to load: ${err.message || err}</div>`;
+  }
+}
+
+$("refreshStoriesBtn").addEventListener("click", () => { loadStories(); loadCharacters(); });
+document.querySelector('[data-subpane="browseSub"]').addEventListener("click", () => { loadStories(); loadCharacters(); }, { once: true });
+</script>
+</body>
+</html>

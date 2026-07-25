@@ -1,0 +1,8 @@
+transformers
+scipy
+soundfile
+fastapi
+uvicorn[standard]
+numpy
+httpx
+librosa

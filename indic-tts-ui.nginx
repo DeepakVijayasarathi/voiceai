@@ -1,0 +1,13 @@
+server {
+    listen 8605;
+    listen [::]:8605;
+    server_name _;
+
+    root /var/www/indic-tts-ui;
+    index index.html;
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

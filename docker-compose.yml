@@ -1,0 +1,32 @@
+services:
+  indic-tts-fast:
+    build: .
+    ports:
+      - "127.0.0.1:8503:8503"
+    environment:
+      - INDIC_TTS_API_KEY=${INDIC_TTS_API_KEY:?set INDIC_TTS_API_KEY in .env}
+      - INDIC_TTS_THREADS=4
+      - INDIC_TTS_RATE_LIMIT_PER_MIN=60
+      # xlit-api (mixed-language transliteration) runs on the host, not in
+      # this compose stack - host-gateway makes the host reachable from
+      # inside the container on Linux (Docker Desktop does this
+      # automatically via host.docker.internal; extra_hosts below is the
+      # Linux equivalent). If xlit-api is unreachable, mixed-language text
+      # degrades to passing the original Latin-script words through
+      # untransliterated rather than failing the request.
+      - XLIT_BASE_URL=http://host.docker.internal:8501
+      - XLIT_API_KEY=${XLIT_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "6"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8503/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3

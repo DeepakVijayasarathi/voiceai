@@ -1,0 +1,16 @@
+[Unit]
+Description=Indic Fast TTS API (MMS-TTS/VITS, 11 languages)
+After=network.target xlit-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/indic-tts-fast/api
+EnvironmentFile=/root/indic-tts-fast/env
+ExecStart=/root/miniconda3/envs/indic-fast/bin/uvicorn app:app --host 127.0.0.1 --port 8503
+Restart=on-failure
+RestartSec=5
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target
