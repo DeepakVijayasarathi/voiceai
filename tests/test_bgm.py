@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 import pytest
 
@@ -114,3 +116,17 @@ def test_bgm_and_sfx_mix_balance_is_reasonable():
     assert speech_db - bgm_contribution_db < 22
     # BGM (the mood cue) should sit louder than SFX (supporting texture).
     assert bgm_contribution_db > sfx_contribution_db
+
+
+def test_single_chunk_fallback_level_matches_scene_mixer():
+    """Regression test for a real bug: _synthesize_long_form's single-chunk
+    path calls mix_with_bgm() without overriding bgm_level, so it silently
+    used mix_with_bgm's OWN default - which had gone stale at the old,
+    pre-fix 0.55 while mix_with_scene_bgm's default was correctly
+    recalibrated to 1.75. Most /tts calls and short villain/revive scenes
+    are single-chunk, so they were still getting the too-quiet mix after
+    the "fix". Pins the two defaults together so they can't drift apart
+    silently again."""
+    bgm_only_default = inspect.signature(mix_with_bgm).parameters["bgm_level"].default
+    scene_default = inspect.signature(mix_with_scene_bgm).parameters["bgm_level"].default
+    assert bgm_only_default == scene_default

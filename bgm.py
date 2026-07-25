@@ -204,7 +204,7 @@ def mix_with_bgm(
     speech: np.ndarray,
     sr: int,
     mood: str = "neutral",
-    bgm_level: float = 0.55,
+    bgm_level: float = 1.75,
     duck_amount: float = 0.85,
 ) -> np.ndarray:
     """Mixes a genre-matched generative track under `speech`, auto-ducked
