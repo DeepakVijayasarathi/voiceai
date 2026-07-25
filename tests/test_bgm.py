@@ -78,3 +78,39 @@ def test_bgm_intensity_scales_output_level():
     low = mix_with_scene_bgm(silence, sr, [(0, sr * 4, ("action", 0.2))])
     high = mix_with_scene_bgm(silence, sr, [(0, sr * 4, ("action", 0.9))])
     assert np.abs(high).mean() > np.abs(low).mean()
+
+
+def _rms_db(x):
+    r = np.sqrt(np.mean(x.astype(np.float64) ** 2))
+    return 20 * np.log10(r) if r > 0 else -np.inf
+
+
+def test_bgm_and_sfx_mix_balance_is_reasonable():
+    """Regression test for a real mix-balance bug: BGM previously sat
+    ~29dB below speech (near-inaudible - the whole point of scene-aware
+    music was defeated) and was actually QUIETER than SFX, which had the
+    mood-setting layer subordinate to the ambiance layer. Pins down the
+    corrected relationship: BGM should be clearly audible under speech
+    (not more than ~22dB down) and louder than SFX (SFX is texture, not
+    the primary layer)."""
+    sr = 24000
+    duration_s = 8.0
+    n = int(sr * duration_s)
+    t = np.linspace(0, duration_s, n, endpoint=False)
+    # ~55% duty-cycle voiced bursts with real silence gaps, closer to
+    # actual narration's speech/pause ratio than a near-continuous tone.
+    speech = (np.sin(2 * np.pi * 180 * t) * (np.sin(2 * np.pi * 0.4 * t) > 0.1)).astype(np.float32) * 0.35
+    speech_db = _rms_db(speech)
+
+    segments = [(0, n, ("horror", 0.7))]
+    sfx_segments = [(0, n, ("rain", 0.7))]
+
+    mixed_both = mix_with_scene_bgm(speech, sr, segments, sfx_segments=sfx_segments)
+    mixed_bgm_only = mix_with_scene_bgm(speech, sr, segments)
+    bgm_contribution_db = _rms_db(mixed_bgm_only - speech)
+    sfx_contribution_db = _rms_db(mixed_both - mixed_bgm_only)
+
+    # BGM should be clearly audible under speech, not buried.
+    assert speech_db - bgm_contribution_db < 22
+    # BGM (the mood cue) should sit louder than SFX (supporting texture).
+    assert bgm_contribution_db > sfx_contribution_db

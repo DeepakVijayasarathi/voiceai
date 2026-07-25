@@ -296,9 +296,10 @@ def mix_with_scene_bgm(
     sr: int,
     segments: list[tuple[int, int, tuple[str, float]]],
     sfx_segments: list[tuple[int, int, tuple[str, float]]] | None = None,
-    bgm_level: float = 0.55,
-    sfx_level: float = 0.35,
-    duck_amount: float = 0.85,
+    bgm_level: float = 1.75,
+    sfx_level: float = 0.19,
+    bgm_duck_amount: float = 0.85,
+    sfx_duck_amount: float = 0.55,
 ) -> np.ndarray:
     """Scene-aware version of mix_with_bgm: `segments` is a list of
     (start_sample, end_sample, (genre, bgm_intensity)) covering `speech`
@@ -313,19 +314,33 @@ def mix_with_scene_bgm(
     layers environmental sound effects (rain, wind, etc.) alongside the
     music at a lower level with a touch of reverb for spatial blend
     (rather than sounding like a dry, pasted-in loop), each entry's label
-    being an (sfx_type, sfx_intensity) pair. Both layers are auto-ducked
-    against the speech envelope together."""
+    being an (sfx_type, sfx_intensity) pair.
+
+    BGM and SFX are ducked INDEPENDENTLY, not as one combined layer:
+    bgm_duck_amount is high (music mostly gets out of the way for
+    dialogue, then swells back in pauses - it's a mood cue, not meant to
+    compete with speech), while sfx_duck_amount is deliberately much
+    lower (ambiance like rain or a crowd realistically stays present at
+    a reduced level under dialogue rather than vanishing - it's room
+    tone, not a foreground element). Measured and rebalanced from an
+    earlier pass where music was ~29dB below speech (near-inaudible) and
+    louder than that by SFX, which had it backwards - see
+    tests/mix_level_probe.py for the measurement approach."""
     n = len(speech)
     if n == 0:
         return speech
     if not segments:
-        return mix_with_bgm(speech, sr, mood="neutral", bgm_level=bgm_level, duck_amount=duck_amount)
+        return mix_with_bgm(speech, sr, mood="neutral", bgm_level=bgm_level, duck_amount=bgm_duck_amount)
+
+    envelope = _speech_envelope(speech, sr)
 
     def _tile_genre_with_intensity(label, sr_, ln):
         genre, intensity = label
         return _tile_loop_to_length(genre, sr_, ln) * intensity
 
     bgm = _build_crossfaded_track(n, sr, segments, _tile_genre_with_intensity)
+    bgm_duck_gain = 1.0 - bgm_duck_amount * envelope
+    bgm = bgm * bgm_duck_gain * bgm_level
 
     if sfx_segments:
         def _tile_sfx_with_intensity(label, sr_, ln):
@@ -335,11 +350,8 @@ def mix_with_scene_bgm(
 
         sfx_track = _build_crossfaded_track(n, sr, sfx_segments, _tile_sfx_with_intensity)
         sfx_track = _schroeder_reverb(sfx_track, sr, mix=0.18)
-        bgm = bgm + sfx_track * (sfx_level / bgm_level if bgm_level else 0)
-
-    envelope = _speech_envelope(speech, sr)
-    duck_gain = 1.0 - duck_amount * envelope
-    bgm = bgm * duck_gain * bgm_level
+        sfx_duck_gain = 1.0 - sfx_duck_amount * envelope
+        bgm = bgm + sfx_track * sfx_duck_gain * sfx_level
 
     fade_len = min(int(sr * 0.3), n // 4)
     if fade_len > 0:
