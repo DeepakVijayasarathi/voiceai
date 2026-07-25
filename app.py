@@ -33,7 +33,7 @@ from lang_detect import detect_language
 from mixed_lang import resolve_mixed_language
 from normalize import normalize_text
 from ratelimit import RateLimitMiddleware
-from voice_profile import assign_profiles, apply_voice_profile
+from voice_profile import assign_profiles, apply_voice_profile, get_speed_multiplier
 from story_gen import (
     StoryGenError,
     extract_characters,
@@ -223,38 +223,47 @@ def _synthesize_long_form(
     call also attributes each chunk to a speaker - the narrator, or one of
     these characters if a chunk is clearly their direct dialogue - and any
     chunk attributed to a named character gets a per-character pitch/EQ
-    voice treatment (see voice_profile.py) applied before it's stitched
-    in, so recurring characters are distinguishable from the narrator and
-    from each other. This is a treatment on the same single underlying
-    voice, not true separate speakers - see voice_profile.py's docstring."""
+    voice treatment AND a slight speaking-pace offset (see
+    voice_profile.py) applied, so recurring characters are distinguishable
+    from the narrator and from each other. This is a treatment on the same
+    single underlying voice, not true separate speakers - see
+    voice_profile.py's docstring. Classification runs BEFORE synthesis in
+    this path (unlike the bgm-only path) specifically so the pace offset
+    can be passed into engine.synthesize() itself, rather than adjusted
+    after audio already exists."""
     known_characters = known_characters or []
     sr = engine.sample_rate(lang)
     chunk_budget = _DIALOGUE_CHUNK_CHAR_BUDGET if known_characters else _CHUNK_CHAR_BUDGET
     chunks = _split_into_chunks(text, chunk_budget)
     silence = np.zeros(int(sr * _INTER_CHUNK_SILENCE_S), dtype=np.float32)
 
-    chunk_audios: list[np.ndarray] = []
-    included_chunk_texts: list[str] = []
+    included: list[tuple[str, str]] = []  # (raw chunk, normalized chunk_text)
     for chunk in chunks:
         chunk_text = normalize_text(resolve_mixed_language(chunk, lang), lang)
-        if not chunk_text:
-            continue
-        audio, _ = engine.synthesize(chunk_text, lang, speed=speed, noise_scale=noise_scale)
-        chunk_audios.append(audio)
-        included_chunk_texts.append(chunk)
+        if chunk_text:
+            included.append((chunk, chunk_text))
 
-    if not chunk_audios:
+    if not included:
         raise ValueError("Text normalized to empty string")
 
-    need_classification = (bgm or known_characters) and len(included_chunk_texts) > 1
+    included_chunk_texts = [raw for raw, _ in included]
+    need_classification = (bgm or known_characters) and len(included) > 1
     scenes = detect_scenes_batch(included_chunk_texts, known_characters=known_characters) if need_classification else None
 
-    if scenes and known_characters:
-        profile_assignment = assign_profiles(known_characters, personality_hints=personality_hints)
-        for i, scene in enumerate(scenes):
-            speaker = scene["speaker"]
+    profile_assignment = assign_profiles(known_characters, personality_hints=personality_hints) if (scenes and known_characters) else {}
+    chunk_audios: list[np.ndarray] = []
+    for i, (_raw, chunk_text) in enumerate(included):
+        chunk_speed = speed
+        profile = None
+        if scenes:
+            speaker = scenes[i]["speaker"]
             if speaker != "narrator" and speaker in profile_assignment:
-                chunk_audios[i] = apply_voice_profile(chunk_audios[i], sr, profile_assignment[speaker])
+                profile = profile_assignment[speaker]
+                chunk_speed = speed * get_speed_multiplier(profile)
+        audio, _ = engine.synthesize(chunk_text, lang, speed=chunk_speed, noise_scale=noise_scale)
+        if profile:
+            audio = apply_voice_profile(audio, sr, profile)
+        chunk_audios.append(audio)
 
     parts: list[np.ndarray] = []
     chunk_offsets: list[tuple[int, int]] = []
@@ -309,7 +318,7 @@ def health():
         "bgm_note": "bgm=true mixes in a procedurally-generated, mood-matched chord progression + rhythm track, scene-classified per-chunk on multi-scene stories, auto-ducked against the speech envelope - not licensed/produced music.",
         "sfx_note": "Multi-scene bgm requests also layer environmental sound effects (rain, wind, thunder, lightning, fire, footsteps, car, traffic, crowd, door_creak, glass_break, birds, water, dog_bark) with a per-scene intensity (0-1, how prominent the sound should be) plus a touch of reverb for spatial blend, when the text describes them, classified in the same batched call as genre - which now also gets its own independent bgm_intensity (0-1) so the music itself swells for dramatic beats and recedes for quiet ones, not just switches genre. This is a broad hand-built palette OpenAI picks from freely with dynamic intensity, not arbitrary open-ended sound generation - that would need a dedicated generative-audio model this service doesn't have.",
         "clarity_note": "noise_scale (VITS's stochastic-expressiveness knob) is now tuned per emotion, all at or below the model's own default, for more consistent pronunciation - previously computed but silently discarded, now actually applied.",
-        "voice_note": "This engine has ONE fixed voice per language - no true multi-speaker model backs it. On /dream-to-story, /stories/{id}/branch, and /characters/{id}/revive, dialogue lines attributed to a known named character get a deterministic per-character pitch/EQ treatment on that same base voice (see voice_profile.py), and the specific treatment is chosen to fit that character's personality (a menacing villain leans deep, a cheerful/young character leans bright) rather than assigned arbitrarily - a real, audible differentiation, but still one underlying voice, not separate speakers.",
+        "voice_note": "This engine has ONE fixed voice per language - no true multi-speaker model backs it. On /dream-to-story, /stories/{id}/branch, and /characters/{id}/revive, dialogue lines attributed to a known named character get a deterministic per-character pitch/EQ treatment plus a slight speaking-pace offset on that same base voice (see voice_profile.py), and the specific treatment is chosen to fit that character's personality (a menacing villain leans deep and speaks a touch slower, a cheerful/young character leans bright and speaks a touch faster) rather than assigned arbitrarily - a real, audible differentiation, but still one underlying voice, not separate speakers.",
     }
 
 

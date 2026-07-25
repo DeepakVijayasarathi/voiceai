@@ -14,9 +14,12 @@ see app.py's /health voice_note.
 
 Implementation: pitch-shift via librosa's phase vocoder (preserves
 duration/tempo, unlike naive resampling) plus a light shelf-EQ tilt for a
-bit of timbral separation beyond pitch alone. Assignment is a stable hash
-of the character's name, so "Priya" gets the same profile in every story
-she appears in, this session or a future one.
+bit of timbral separation, plus a slight speaking-pace offset (VITS's
+native speaking_rate - the same clean, artifact-free knob already used
+for emotion-based speed, see app.py's EMOTION_PRESETS) so differentiation
+doesn't rest on pitch-shifting alone. Assignment is a stable hash of the
+character's name, so "Priya" gets the same profile in every story she
+appears in, this session or a future one.
 """
 import hashlib
 
@@ -25,20 +28,23 @@ import numpy as np
 from scipy.signal import butter, sosfilt
 
 # (pitch shift in semitones, shelf-EQ tilt in dB at the shelf frequency -
-# positive brightens/thins, negative darkens/warms). Deliberately modest
-# shifts (<=3.5 semitones) - large shifts start to sound artificial/
-# robotic on a single-speaker model never trained for this, which would
-# cut against "more attractive" rather than help it. Seven profiles
-# (rather than a handful) so a typical small story cast (2-4 named
-# characters) is unlikely to collide onto the same one.
+# positive brightens/thins, negative darkens/warms - and a speaking-pace
+# multiplier applied at synthesis time, deeper/more authoritative-leaning
+# profiles speaking slightly slower, brighter/more energetic-leaning ones
+# slightly faster). Deliberately modest shifts (<=3.5 semitones, <=8% pace
+# change) - large shifts start to sound artificial/robotic on a
+# single-speaker model never trained for this, which would cut against
+# "more attractive" rather than help it. Seven profiles (rather than a
+# handful) so a typical small story cast (2-4 named characters) is
+# unlikely to collide onto the same one.
 _PROFILES = {
-    "deepest": (-3.5, -3.5),
-    "deep": (-2.0, -2.0),
-    "warm": (-1.0, -1.0),
-    "neutral_shift": (0.5, 0.5),
-    "bright": (1.5, 1.5),
-    "high": (2.5, 2.5),
-    "highest": (3.5, 3.5),
+    "deepest": (-3.5, -3.5, 0.92),
+    "deep": (-2.0, -2.0, 0.96),
+    "warm": (-1.0, -1.0, 1.00),
+    "neutral_shift": (0.5, 0.5, 1.00),
+    "bright": (1.5, 1.5, 1.03),
+    "high": (2.5, 2.5, 1.06),
+    "highest": (3.5, 3.5, 1.08),
 }
 PROFILE_NAMES = list(_PROFILES.keys())
 _SHELF_FREQ_HZ = 1500
@@ -97,12 +103,20 @@ def _shelf_eq(audio: np.ndarray, sr: int, tilt_db: float) -> np.ndarray:
     return (audio + filtered * gain).astype(np.float32)
 
 
+def get_speed_multiplier(profile: str) -> float:
+    """1.0 (no change) for unrecognized profiles (e.g. 'narrator')."""
+    return _PROFILES.get(profile, (0, 0, 1.0))[2]
+
+
 def apply_voice_profile(audio: np.ndarray, sr: int, profile: str) -> np.ndarray:
     """No-op if `profile` is unrecognized (e.g. 'narrator') - returns
-    `audio` unchanged."""
+    `audio` unchanged. Only handles the pitch/EQ part of the treatment -
+    the speaking-pace part (get_speed_multiplier) is applied separately,
+    at synthesis time, since it needs to be passed into engine.synthesize
+    before audio exists rather than adjusted after the fact."""
     if profile not in _PROFILES:
         return audio
-    semitones, tilt_db = _PROFILES[profile]
+    semitones, tilt_db, _speed = _PROFILES[profile]
     shifted = librosa.effects.pitch_shift(audio.astype(np.float32), sr=sr, n_steps=semitones)
     shifted = _shelf_eq(shifted, sr, tilt_db)
     peak = np.abs(shifted).max()

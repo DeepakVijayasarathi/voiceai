@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from voice_profile import PROFILE_NAMES, apply_voice_profile, assign_profiles, get_voice_profile
+from voice_profile import PROFILE_NAMES, apply_voice_profile, assign_profiles, get_speed_multiplier, get_voice_profile
 
 
 def test_get_voice_profile_is_deterministic_and_case_insensitive():
@@ -60,3 +60,18 @@ def test_apply_voice_profile_narrator_is_noop():
     sr = 24000
     audio = np.random.default_rng(0).normal(0, 0.1, sr).astype(np.float32)
     assert np.array_equal(apply_voice_profile(audio, sr, "narrator"), audio)
+
+
+def test_get_speed_multiplier_narrator_is_unchanged():
+    assert get_speed_multiplier("narrator") == 1.0
+
+
+@pytest.mark.parametrize("profile", PROFILE_NAMES)
+def test_get_speed_multiplier_within_modest_bounds(profile):
+    # Large pace swings would sound unnatural on a model never trained
+    # for this - keep the multiplier close to 1.0.
+    assert 0.85 <= get_speed_multiplier(profile) <= 1.15
+
+
+def test_deeper_profiles_speak_no_faster_than_brighter_ones():
+    assert get_speed_multiplier("deepest") < get_speed_multiplier("highest")
