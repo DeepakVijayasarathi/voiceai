@@ -102,7 +102,12 @@ def _schroeder_reverb(signal: np.ndarray, sr: int, mix: float) -> np.ndarray:
     return signal * (1 - mix) + wet * mix
 
 
-def _generate_track(genre: str, duration_s: float = 16.0, sr: int = _SR) -> np.ndarray:
+def _generate_track(genre: str, duration_s: float = 32.0, sr: int = _SR) -> np.ndarray:
+    """duration_s defaults to 32s (not the original 16s) specifically for
+    long-form narration: this loop gets tiled to cover the full speech
+    length (see _tile_loop_to_length), so a short base loop repeats
+    audibly often across a multi-minute story - doubling it halves how
+    often the exact same pattern recurs."""
     g = GENRES.get(genre, GENRES["neutral"])
     chords, tempo, noise_level, brightness, use_arp, detune_spread, reverb_mix = (
         g["chords"], g["tempo"], g["noise"], g["brightness"], g["arp"], g["detune"], g["reverb"]
@@ -111,6 +116,17 @@ def _generate_track(genre: str, duration_s: float = 16.0, sr: int = _SR) -> np.n
     t = np.linspace(0, duration_s, n, endpoint=False)
 
     bar_len_s = 4 / tempo
+    # Humanization: real sequenced-but-live-feeling music doesn't repeat
+    # each bar at a perfectly identical level - a small deterministic
+    # (per-genre-seeded, so caching/reproducibility is unaffected)
+    # bar-to-bar gain variation avoids the "obviously on a mechanical
+    # loop" quality a perfectly uniform pattern has.
+    humanize_rng = np.random.default_rng((abs(hash(genre)) + 1) % (2**32))
+    n_bars = int(duration_s / bar_len_s) + 2
+    bar_gains = 1.0 + humanize_rng.uniform(-0.06, 0.06, size=n_bars)
+    bar_idx_f = np.clip((t // bar_len_s).astype(int), 0, n_bars - 1)
+    bar_gain_curve = bar_gains[bar_idx_f]
+
     chord_idx = (t // bar_len_s).astype(int) % len(chords)
 
     pad = np.zeros(n, dtype=np.float64)
@@ -126,11 +142,11 @@ def _generate_track(genre: str, duration_s: float = 16.0, sr: int = _SR) -> np.n
                 pad[mask] += np.sin(2 * np.pi * f * det * t[mask]) / (len(freqs) * 2)
 
     swell = 0.65 + 0.35 * np.sin(2 * np.pi * 0.12 * t)
-    pad *= swell * brightness * 0.14
+    pad *= swell * brightness * 0.14 * bar_gain_curve
 
     beat_phase = (t * tempo) % 1.0
     pulse_env = np.clip(1.0 - beat_phase * 6.0, 0, 1) ** 2
-    pulse = np.sin(2 * np.pi * 80 * t) * pulse_env * 0.08
+    pulse = np.sin(2 * np.pi * 80 * t) * pulse_env * 0.08 * bar_gain_curve
 
     arp = np.zeros(n, dtype=np.float64)
     if use_arp:

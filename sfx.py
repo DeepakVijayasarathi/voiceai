@@ -305,7 +305,7 @@ _GENERATORS = {
 }
 
 
-def get_sfx_loop(sfx_type: str, duration_s: float = 16.0) -> np.ndarray | None:
+def get_sfx_loop(sfx_type: str, duration_s: float = 24.0) -> np.ndarray | None:
     """Returns None for 'none' or an unrecognized type (silence - no SFX
     layer added), otherwise the (cached) generated loop."""
     if sfx_type not in _GENERATORS:
