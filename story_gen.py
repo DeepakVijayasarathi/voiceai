@@ -38,6 +38,41 @@ LANGUAGE_NAMES = {
     "pan": "Punjabi", "ory": "Odia", "asm": "Assamese",
 }
 
+# Real, specific regional landmarks/cultural touchstones per language -
+# not mandatory set-dressing for every story, but something authentic for
+# the model to reach for instead of a generic, placeless "a village" or
+# "a city" when the story calls for a setting. A Tamil story set in a
+# temple town should be able to land on Madurai's Meenakshi Amman Temple
+# rather than an invented one; a Hindi story near a sacred river should
+# be able to land on Varanasi's ghats, and so on.
+LANGUAGE_CULTURAL_CONTEXT = {
+    "tam": "Tamil Nadu - e.g. Madurai and the Meenakshi Amman Temple, Rameswaram, Thanjavur's Brihadeeswarar Temple, Chennai, the hills of Ooty",
+    "hin": "the Hindi-speaking heartland - e.g. Varanasi's ghats on the Ganga, Delhi's Red Fort, Agra's Taj Mahal, Mathura-Vrindavan, Rishikesh",
+    "tel": "Andhra Pradesh/Telangana - e.g. Tirupati's Venkateswara Temple, Hyderabad's Charminar, Vijayawada, Amaravati",
+    "mal": "Kerala - e.g. the Kerala backwaters near Alleppey, Kochi, Guruvayur Temple, the hills of Munnar, Sabarimala",
+    "kan": "Karnataka - e.g. Mysore Palace, the ruins of Hampi, Bengaluru, Udupi's Krishna Temple, Coorg's hills",
+    "mar": "Maharashtra - e.g. Shirdi, the Ajanta-Ellora cave temples, Pune, Mumbai, the Konkan coast",
+    "guj": "Gujarat - e.g. Dwarka's Dwarkadhish Temple, the Somnath Temple, the Rann of Kutch, Ahmedabad",
+    "ben": "West Bengal - e.g. Kolkata's Howrah Bridge and Durga Puja season, the Sundarbans, Dakshineswar Kali Temple, Shantiniketan",
+    "pan": "Punjab - e.g. Amritsar's Golden Temple, Punjab's wheat fields, Anandpur Sahib",
+    "ory": "Odisha - e.g. Puri's Jagannath Temple, the Konark Sun Temple, Chilika Lake, Bhubaneswar",
+    "asm": "Assam - e.g. Guwahati's Kamakhya Temple, the Brahmaputra river, Kaziranga, Assam's tea gardens",
+}
+
+
+def _setting_clause(language: str) -> str:
+    context = LANGUAGE_CULTURAL_CONTEXT.get(language)
+    if not context:
+        return ""
+    return (
+        f" If the story calls for a real-world setting, name a specific, "
+        f"real one from {context} explicitly (by name, e.g. 'Madurai' or "
+        f"'the Meenakshi Amman Temple', not just 'a temple town') rather "
+        f"than describing an invented or unnamed generic place. Don't "
+        f"force this: an abstract, fantastical, or otherwise-located story "
+        f"shouldn't be awkwardly relocated just to name-drop one."
+    )
+
 
 class StoryGenError(Exception):
     pass
@@ -83,7 +118,7 @@ def generate_story(description: str, language: str) -> str:
         f"suitable for spoken audio narration, written entirely in {lang_name} "
         f"(native script, not transliterated). Keep it under {TARGET_CHAR_BUDGET} "
         f"characters. Write only the narrative itself - no title, no notes, "
-        f"no markdown, no quotation marks around it."
+        f"no markdown, no quotation marks around it.{_setting_clause(language)}"
     )
     story = _chat_completion(system_prompt, description, max_tokens=500, temperature=0.9)
     return story[:950]  # hard safety margin under MAX_TEXT_LEN
@@ -150,7 +185,7 @@ def generate_continuation(prior_text: str, changed_decision: str, language: str)
         f"some point in it. Write ONLY the new continuation from that changed "
         f"decision onward - do not repeat the original text, do not include "
         f"the parts before the change. Keep it under {TARGET_CHAR_BUDGET} "
-        f"characters. No title, no markdown, no notes."
+        f"characters. No title, no markdown, no notes.{_setting_clause(language)}"
     )
     user_content = f"STORY SO FAR:\n{prior_text}\n\nCHANGED DECISION:\n{changed_decision}"
     continuation = _chat_completion(system_prompt, user_content, max_tokens=500, temperature=0.9)
@@ -169,7 +204,10 @@ def revive_character(name: str, personality: str, backstory: str, new_setting: s
         f"new story, in {lang_name} (native script). Keep their personality "
         f"consistent with what's described. Write a short, vivid scene "
         f"suitable for audio narration. Keep it under {TARGET_CHAR_BUDGET} "
-        f"characters. No title, no markdown, no notes."
+        f"characters. No title, no markdown, no notes. The user's NEW SETTING "
+        f"below is the actual setting to use - only reach for a regional "
+        f"landmark instead if NEW SETTING is vague/unspecified about "
+        f"place.{_setting_clause(language)}"
     )
     user_content = (
         f"CHARACTER: {name}\nPERSONALITY: {personality}\nBACKSTORY: {backstory}\n\n"
@@ -189,7 +227,8 @@ def generate_villain(fears: str, language: str) -> tuple[str, str]:
         f"Design a villain character whose menace specifically targets the "
         f"fears/anxieties described by the user, then write a short, vivid "
         f"scene in {lang_name} (native script) introducing this villain to a "
-        f"protagonist. Respond as JSON only, no markdown fences: "
+        f"protagonist.{_setting_clause(language)} Respond as JSON only, no "
+        f"markdown fences: "
         f'{{"name": "villain name", "scene": "the scene text, under '
         f"{TARGET_CHAR_BUDGET} characters, no title, no notes\"}}."
     )
