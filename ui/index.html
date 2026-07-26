@@ -48,6 +48,9 @@
   }
   #root { min-height: 100vh; }
   a { color: inherit; }
+  button, .navitem, .quick-action, .culture-tile, .stat-card, .list-row, input, select, textarea {
+    transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .1s ease, opacity .15s ease;
+  }
 
   .app-shell { display: flex; min-height: 100vh; }
 
@@ -57,23 +60,27 @@
     display: flex; flex-direction: column; padding: 20px 14px; position: sticky; top: 0; height: 100vh;
     overflow-y: auto;
   }
-  .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
-  .brand img { width: 34px; height: 34px; border-radius: 8px; }
-  .brand-text { line-height: 1.15; }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 8px 8px 22px; }
+  .brand img { width: 36px; height: 36px; border-radius: 9px; box-shadow: 0 2px 8px rgba(80,60,180,.25); }
+  .brand-text { line-height: 1.2; }
   .brand-name {
-    font-weight: 800; font-size: 15px; letter-spacing: .02em;
+    font-weight: 800; font-size: 15px; letter-spacing: .04em;
     background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  .brand-sub { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .brand-sub { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; font-weight: 600; }
 
   .navlist { display: flex; flex-direction: column; gap: 2px; flex: 1; }
   .navitem {
     display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
     font-size: 13.5px; font-weight: 600; color: var(--muted); cursor: pointer; user-select: none;
-    border: 1px solid transparent;
+    border: 1px solid transparent; position: relative;
   }
   .navitem:hover { background: var(--bg-soft); color: var(--text); }
   .navitem.active { background: var(--bg-soft); color: var(--text); border-color: var(--border); }
+  .navitem.active::before {
+    content: ""; position: absolute; left: -14px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--gradient);
+  }
   .navitem .dot {
     width: 8px; height: 8px; border-radius: 50%; background: var(--gradient); flex-shrink: 0;
     opacity: .35;
@@ -87,6 +94,7 @@
     background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px;
     box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px;
   }
+  .stat-card:hover { transform: translateY(-2px); border-color: var(--grad-2); }
   .stat-card .stat-icon {
     width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
     background: var(--gradient); color: white; flex-shrink: 0;
@@ -113,6 +121,27 @@
   .health-pill {
     display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
     padding: 5px 10px; border-radius: 999px; background: var(--bg-soft); border: 1px solid var(--border);
+  }
+
+  .culture-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+  .culture-tile {
+    position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; cursor: pointer;
+    background: var(--bg-soft); border: 1px solid var(--border); display: flex; align-items: flex-end;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .culture-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .culture-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .culture-tile-placeholder {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; background: var(--gradient); opacity: .18;
+  }
+  .culture-tile-loading {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: var(--muted); background: var(--bg-soft);
+  }
+  .culture-tile-label {
+    position: relative; z-index: 1; width: 100%; padding: 8px 10px; font-size: 11.5px; font-weight: 700;
+    color: #fff; background: linear-gradient(0deg, rgba(0,0,0,.65), transparent);
   }
 
   .preview-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
@@ -147,16 +176,19 @@
   }
 
   /* ---------- Main ---------- */
-  .main { flex: 1; min-width: 0; padding: 28px 32px 60px; max-width: 980px; }
-  .page-head { margin-bottom: 22px; }
-  .page-title { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
-  .page-sub { font-size: 13.5px; color: var(--muted); margin: 0; max-width: 640px; line-height: 1.5; }
+  .main { flex: 1; min-width: 0; padding: 32px 36px 60px; max-width: 1000px; }
+  .page-head { margin-bottom: 24px; }
+  .page-title { font-size: 23px; font-weight: 800; margin: 0 0 5px; letter-spacing: -.01em; }
+  .page-sub { font-size: 13.5px; color: var(--muted); margin: 0; max-width: 640px; line-height: 1.55; }
 
   .card {
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 18px;
+    padding: 24px 26px; box-shadow: var(--shadow); margin-bottom: 18px;
   }
-  .card h3 { margin: 0 0 14px; font-size: 14px; font-weight: 700; }
+  .card h3 {
+    margin: 0 0 16px; font-size: 12.5px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted);
+  }
   .card + .card { margin-top: 18px; }
 
   label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
@@ -180,14 +212,17 @@
   button.btn {
     margin-top: 18px; border: none; border-radius: 10px; padding: 11px 18px; font-size: 13.5px;
     font-weight: 700; cursor: pointer; color: white; background: var(--gradient);
-    background-size: 180% 100%; transition: background-position .3s ease, transform .1s ease;
+    background-size: 180% 100%; box-shadow: 0 2px 10px rgba(106,90,224,.28);
+    transition: background-position .3s ease, transform .1s ease, box-shadow .15s ease;
   }
-  button.btn:hover { background-position: 100% 0; }
+  button.btn:hover { background-position: 100% 0; box-shadow: 0 4px 16px rgba(106,90,224,.38); }
   button.btn:active { transform: scale(.98); }
-  button.btn:disabled { opacity: .5; cursor: default; }
+  button.btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
   button.btn.ghost {
     background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 600;
+    box-shadow: none;
   }
+  button.btn.ghost:hover { border-color: var(--grad-2); background: var(--bg-soft); }
   button.btn.small { margin-top: 0; padding: 7px 12px; font-size: 12px; }
 
   .status { margin-top: 12px; font-size: 12.5px; min-height: 16px; }
@@ -224,6 +259,12 @@
   .list-row .list-title { font-weight: 700; margin-bottom: 3px; }
   .list-row .list-sub { color: var(--muted); font-size: 11.5px; }
   .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex-shrink: 0; cursor: pointer; background: var(--bg-soft); }
+  .avatar-thumb { border-radius: 50%; cursor: default; box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--border); }
+  .avatar-fallback {
+    width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: var(--gradient); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px;
+    box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--border);
+  }
   .list-actions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
   .list-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 26px 0; }
   .inline-form { margin-top: 10px; padding: 12px; background: var(--bg-soft); border-radius: 10px; }
@@ -650,6 +691,7 @@ function DreamPanel({ apiKey, onStorySaved }) {
   const [maxImages, setMaxImages] = useState(4);
   const [withVisual, setWithVisual] = useState(false);
   const [withVideo, setWithVideo] = useState(false);
+  const [withAvatars, setWithAvatars] = useState(false);
   const [status, setStatus] = useState({ text: "", cls: "" });
   const [storyText, setStoryText] = useState("");
   const [audioUrl, setAudioUrl] = useState(null);
@@ -692,7 +734,7 @@ function DreamPanel({ apiKey, onStorySaved }) {
         headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
         body: JSON.stringify({
           description, language, images: withImages, max_images: parseInt(maxImages, 10),
-          visual: withVisual || withVideo, video: withVideo,
+          visual: withVisual || withVideo, video: withVideo, avatars: withAvatars,
         }),
       });
       if (!resp.ok) throw new Error(await readError(resp));
@@ -757,6 +799,10 @@ function DreamPanel({ apiKey, onStorySaved }) {
         <input type="checkbox" id="dream-video" checked={withVideo} onChange={(e) => setWithVideo(e.target.checked)} />
         <label htmlFor="dream-video">Also compose a downloadable video (cover image + full narration, via ffmpeg)</label>
       </div>
+      <div className="checkbox-row">
+        <input type="checkbox" id="dream-avatars" checked={withAvatars} onChange={(e) => setWithAvatars(e.target.checked)} />
+        <label htmlFor="dream-avatars">Generate a portrait avatar for each named character</label>
+      </div>
       <button className="btn" onClick={submit} disabled={busy}>{busy ? "Working…" : "Generate story"}</button>
       <div className={`status ${status.cls}`}>{status.text}</div>
       {storyText && (
@@ -781,33 +827,38 @@ function DreamPanel({ apiKey, onStorySaved }) {
 function VillainPanel({ apiKey, onStorySaved }) {
   const [fears, setFears] = useState("being trapped in small enclosed spaces with no way out, and losing control over one's own decisions");
   const [language, setLanguage] = useState("hin");
+  const [withAvatar, setWithAvatar] = useState(false);
   const [status, setStatus] = useState({ text: "", cls: "" });
   const [villainName, setVillainName] = useState("");
   const [sceneText, setSceneText] = useState("");
   const [audioUrl, setAudioUrl] = useState(null);
   const [meta, setMeta] = useState("");
   const [qualityHeaders, setQualityHeaders] = useState(null);
+  const [avatarCharacterId, setAvatarCharacterId] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!fears.trim()) { setStatus({ text: "Describe the listener's fears first.", cls: "error" }); return; }
     setBusy(true); setStatus({ text: "Designing villain and narrating...", cls: "" });
+    setAvatarCharacterId(null);
     const t0 = performance.now();
     try {
       const resp = await fetch(API_BASE + "/villain", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
-        body: JSON.stringify({ fears, language }),
+        body: JSON.stringify({ fears, language, avatars: withAvatar }),
       });
       if (!resp.ok) throw new Error(await readError(resp));
       const storyB64 = resp.headers.get("X-Story-Text-B64");
       const nameB64 = resp.headers.get("X-Villain-Name-B64");
       const storyId = resp.headers.get("X-Story-Id");
+      const characterId = resp.headers.get("X-Character-Id");
       setQualityHeaders(resp.headers);
       const blob = await resp.blob();
       setAudioUrl(URL.createObjectURL(blob));
       if (nameB64) setVillainName(b64ToUtf8(nameB64));
       if (storyB64) setSceneText(b64ToUtf8(storyB64));
+      if (withAvatar && characterId) setAvatarCharacterId(characterId);
       setMeta(`Story #${storyId} · ${((performance.now() - t0) / 1000).toFixed(1)}s`);
       setStatus({ text: "Done.", cls: "ok" });
       if (onStorySaved) onStorySaved();
@@ -827,8 +878,13 @@ function VillainPanel({ apiKey, onStorySaved }) {
         <textarea value={fears} onChange={(e) => setFears(e.target.value)} />
       </Field>
       <Field label="Language"><LangSelect value={language} onChange={setLanguage} /></Field>
+      <div className="checkbox-row">
+        <input type="checkbox" id="villain-avatar" checked={withAvatar} onChange={(e) => setWithAvatar(e.target.checked)} />
+        <label htmlFor="villain-avatar">Generate a portrait avatar for this villain</label>
+      </div>
       <button className="btn" onClick={submit} disabled={busy}>{busy ? "Working…" : "Generate villain"}</button>
       <div className={`status ${status.cls}`}>{status.text}</div>
+      {avatarCharacterId && <img className="scene-image" style={{ maxWidth: 200 }} src={`${API_BASE}/characters/${avatarCharacterId}/avatar`} alt="Villain portrait" />}
       {sceneText && (
         <div className="story-output">
           <div className="label">{villainName || "Villain"}</div>
@@ -1078,6 +1134,11 @@ function CharacterRow({ apiKey, character, onRevived }) {
   return (
     <div>
       <div className="list-row">
+        {character.has_avatar ? (
+          <img className="thumb avatar-thumb" src={`${API_BASE}/characters/${character.id}/avatar`} alt="" />
+        ) : (
+          <div className="avatar-fallback">{(character.name || "?").charAt(0).toUpperCase()}</div>
+        )}
         <div className="list-main">
           <div className="list-title">{character.name}</div>
           <div className="list-sub">{character.personality || ""}</div>
@@ -1409,6 +1470,46 @@ function NavItems({ activeTab, setActiveTab }) {
 }
 
 /* ---------------- Overview / Dashboard ---------------- */
+function CultureGallery({ apiKey }) {
+  // Each tile generates a real OpenAI image on first request (cached
+  // server-side after that) - loaded lazily per-click, not all 11 at
+  // once on dashboard load, so opening this tab never silently spends
+  // 11 image-generation calls.
+  const [loaded, setLoaded] = useState({});
+  const [loading, setLoading] = useState(null);
+
+  const reveal = (code) => {
+    if (loaded[code] || loading === code) return;
+    setLoading(code);
+  };
+
+  return (
+    <div className="card">
+      <h3>Explore the culture packs</h3>
+      <p className="hint" style={{ marginBottom: 14 }}>Click a language to generate its representative cultural image - cached after the first time, so it's instant for everyone after.</p>
+      <div className="culture-grid">
+        {LANGUAGES.map(([code, name]) => (
+          <div className="culture-tile" key={code} onClick={() => reveal(code)}>
+            {loaded[code] ? (
+              <img src={`${API_BASE}/culture/${code}/image`} alt={name} />
+            ) : loading === code ? (
+              <img
+                src={`${API_BASE}/culture/${code}/image`} alt={name}
+                onLoad={() => { setLoaded((l) => ({ ...l, [code]: true })); setLoading(null); }}
+                onError={() => setLoading(null)}
+                style={{ display: "none" }}
+              />
+            ) : null}
+            {loading === code && !loaded[code] && <div className="culture-tile-loading">Generating…</div>}
+            {!loaded[code] && loading !== code && <div className="culture-tile-placeholder">✦</div>}
+            <div className="culture-tile-label">{name}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OverviewPanel({ apiKey, setActiveTab, refreshToken }) {
   const [stats, setStats] = useState({ stories: null, characters: null, backlog: null });
   const [health, setHealth] = useState(null);
@@ -1491,6 +1592,8 @@ function OverviewPanel({ apiKey, setActiveTab, refreshToken }) {
         </div>
         <div className="hint" style={{ marginTop: 10 }}>See the Services tab for live per-service status of every backing service this UI talks to.</div>
       </div>
+
+      <CultureGallery apiKey={apiKey} />
     </div>
   );
 }

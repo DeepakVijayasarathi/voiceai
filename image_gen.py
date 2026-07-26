@@ -72,22 +72,18 @@ def _derive_visual_prompt(story_text: str) -> str:
     return prompt
 
 
-def generate_story_image(story_text: str) -> bytes:
-    """Returns PNG bytes depicting the story's strongest visual moment.
-    Raises ImageGenError on failure (missing key, network error,
-    unexpected response) - this is opt-in, so the caller should see the
-    failure rather than have it silently dropped."""
+def _generate_image_from_prompt(prompt: str) -> bytes:
+    """Shared OpenAI Images call - takes an already-English prompt and
+    returns PNG bytes. Raises ImageGenError on failure."""
     if not OPENAI_API_KEY:
         raise ImageGenError("OPENAI_API_KEY not configured on this service")
-
-    visual_prompt = _derive_visual_prompt(story_text)
     try:
         resp = httpx.post(
             OPENAI_IMAGES_URL,
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
             json={
                 "model": OPENAI_IMAGE_MODEL,
-                "prompt": visual_prompt,
+                "prompt": prompt,
                 "size": IMAGE_SIZE,
                 "n": 1,
             },
@@ -103,3 +99,29 @@ def generate_story_image(story_text: str) -> bytes:
         return base64.b64decode(b64)
     except (ValueError, TypeError) as e:
         raise ImageGenError(f"Image response was not valid base64: {e}")
+
+
+def generate_story_image(story_text: str) -> bytes:
+    """Returns PNG bytes depicting the story's strongest visual moment.
+    Raises ImageGenError on failure (missing key, network error,
+    unexpected response) - this is opt-in, so the caller should see the
+    failure rather than have it silently dropped."""
+    visual_prompt = _derive_visual_prompt(story_text)
+    return _generate_image_from_prompt(visual_prompt)
+
+
+def generate_character_avatar(name: str, personality: str, backstory: str) -> bytes:
+    """Returns PNG bytes: a portrait-style avatar for a saved character,
+    built directly from their name/personality/backstory. No extra
+    distillation call first (unlike generate_story_image) - these fields
+    are already short and structured (see story_gen.extract_characters),
+    not raw prose that needs summarizing into a visual moment. Raises
+    ImageGenError on failure - opt-in, see app.py's `avatars` request
+    field."""
+    prompt = (
+        f"A character portrait, head-and-shoulders, cinematic "
+        f"illustration style, no text or writing in the image. "
+        f"Character: {name}. Personality: {personality}. "
+        f"Context: {backstory}"
+    )
+    return _generate_image_from_prompt(prompt[:900])

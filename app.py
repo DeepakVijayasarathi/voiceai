@@ -49,7 +49,8 @@ from ratelimit import RateLimitMiddleware
 # "images" feature (see db.py's save_story_image vs save_scene_image
 # docstrings). image_gen.ImageGenError is aliased to avoid shadowing
 # images.ImageGenError, imported just above under the same bare name.
-from image_gen import ImageGenError as CoverImageGenError, generate_story_image
+from image_gen import ImageGenError as CoverImageGenError, generate_character_avatar, generate_story_image
+from culture_images import get_culture_image
 from video_gen import VideoGenError, compose_video
 from sfx import SFX_TYPES, get_sfx_loop
 from voice_profile import PROFILE_NAMES, _PROFILES, assign_profiles, apply_voice_profile, get_speed_multiplier
@@ -188,6 +189,7 @@ class DreamToStoryRequest(BaseModel):
     video: bool = Field(default=False, description="Also compose a downloadable/shareable MP4 (the cover image held for the full narration) via ffmpeg. Implies visual=true (video needs a cover image) even if visual wasn't separately set. Off by default. Retrieve via GET /stories/{id}/video.")
     images: bool = Field(default=False, description="Also generate several scene illustrations via OpenAI Images, mapped to approximate time ranges in the narration - see GET /stories/{id}/images. Off by default: adds real per-image latency and OpenAI cost on top of narration. Distinct from visual=true above - this is a multi-image, time-synced storyboard, not one cover image.")
     max_images: int = Field(default=4, ge=1, le=6, description="Max number of scene images to generate when images=true.")
+    avatars: bool = Field(default=False, description="Also generate a portrait avatar (OpenAI Images) for each newly-extracted named character. Off by default - one extra image call per character on top of narration/other image costs. Retrieve via GET /characters/{id}/avatar.")
 
 
 def _check_auth(x_api_key: str | None) -> None:
@@ -393,6 +395,18 @@ def _quality_headers(quality_scores: dict) -> dict:
     }
 
 
+def _maybe_generate_avatar(character_id: int, name: str, personality: str, backstory: str) -> None:
+    """Best-effort character portrait generation (see app.py's `avatars`
+    request field, image_gen.generate_character_avatar) - a failure here
+    never fails the request that triggered it, since character extraction
+    itself is already a best-effort side effect of story generation."""
+    try:
+        avatar_bytes = generate_character_avatar(name, personality, backstory)
+        db.save_character_avatar(character_id, avatar_bytes)
+    except CoverImageGenError as e:
+        logger.warning("avatar generation failed for character_id=%s (non-fatal): %s", character_id, e)
+
+
 def _maybe_generate_scene_images(
     max_images: int, story_id: int, story_text: str, language: str,
     character_names: list[str], chunk_offsets: list[tuple[int, int]], raw_chunks: list[str],
@@ -470,6 +484,7 @@ def health():
         "quality_note": "Story text from /dream-to-story, /stories/{id}/branch, /characters/{id}/revive, and /villain is scored by an independent second OpenAI call on 4 axes (native-sounding, tone-appropriateness, cultural-accuracy, emotional-delivery) before narration. A low score triggers ONE automatic rewrite targeting the weak axes; whichever version scores higher is what gets narrated. This judges the generated TEXT only, not the synthesized audio's pronunciation - nothing on this box can evaluate audio quality. Stories still below threshold after the rewrite attempt are visible at GET /quality/backlog.",
         "export_note": "GET /stories/{id}/game-tree exposes the existing branch feature as a navigable choice-tree (interactive fiction, not a game engine). GET /stories/{id}/comic returns scene images + native-script captions as JSON panels for a client to render (no server-side speech-bubble compositing - that would need a bundled Unicode font per script). POST /stories/{id}/render/video builds an ffmpeg slideshow from scene images + saved narration audio - requires the story to have been generated with images=true AND the ffmpeg binary to be installed on this host (checked at call time, returns 501 if missing rather than crashing).",
         "images_note": "images=true on /tts or /dream-to-story generates up to max_images scene illustrations via OpenAI's image API (gpt-image-1 by default), mapped to approximate time ranges in the narration via GET /stories/{id}/images - off by default since it adds real per-image latency and OpenAI cost on top of narration. On /tts this also saves the input text as a story (needed so images have somewhere to attach). Best-effort: a failed prompt/image generation drops that one scene rather than failing the whole request.",
+        "avatars_note": "avatars=true on /dream-to-story or /villain generates a portrait avatar via OpenAI Images for each newly-saved character, retrievable via GET /characters/{id}/avatar. Off by default: one extra image call per character. Best-effort - a failed avatar generation is logged and skipped, never fails the request.",
         "voice_note": "This engine has ONE fixed voice per language - no true multi-speaker model backs it. On /dream-to-story, /stories/{id}/branch, and /characters/{id}/revive, dialogue lines attributed to a known named character get a deterministic per-character pitch/EQ treatment plus a slight speaking-pace offset on that same base voice (see voice_profile.py), and the specific treatment is chosen to fit that character's personality (a menacing villain leans deep and speaks a touch slower, a cheerful/young character leans bright and speaks a touch faster) rather than assigned arbitrarily - a real, audible differentiation, but still one underlying voice, not separate speakers.",
         "visual_note": "POST /dream-to-story accepts visual=true (off by default) to also generate a cover/scene image via OpenAI's image API, depicting the story's single strongest visual moment - a two-step process (derive an English scene prompt from the native-script story, then generate from that). Retrieve via GET /stories/{id}/image. Off by default: a real per-image cost/latency commitment, unlike the cheap text classification calls elsewhere. Generation failure is non-fatal to the request (audio still returns) and reported via X-Has-Image/X-Image-Error-B64 headers.",
         "video_note": "POST /dream-to-story also accepts video=true (implies visual=true) to compose a real, shareable MP4 (the cover image held for the full narration) via ffmpeg - retrieve via GET /stories/{id}/video. This is NOT AI-generated moving video (that needs a fundamentally different, much slower/costlier generative-video model this service doesn't have access to) - it's a static-image-plus-audio mux, honest about what it is.",
@@ -489,6 +504,22 @@ def warmup():
 @app.get("/languages")
 def languages():
     return {"languages": engine.languages()}
+
+
+@app.get("/culture/{language}/image")
+def get_culture_image_endpoint(language: str):
+    """A representative cultural image for `language` - one of the real
+    landmarks curated in story_gen.LANGUAGE_CULTURAL_CONTEXT, generated
+    once via OpenAI Images and cached to disk thereafter (see
+    culture_images.py). Not opt-in/per-request - there's only ever one of
+    these per language, generated lazily on first access."""
+    if language not in engine.languages():
+        raise HTTPException(status_code=404, detail=f"Unsupported language '{language}'. Supported: {list(engine.languages())}")
+    try:
+        image_bytes = get_culture_image(language)
+    except CoverImageGenError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return Response(content=image_bytes, media_type="image/png")
 
 
 @app.get("/config")
@@ -646,6 +677,8 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
         character_names.append(char["name"])
         if char.get("voice_profile"):
             personality_hints[char["name"]] = char["voice_profile"]
+        if req.avatars:
+            _maybe_generate_avatar(cid, char["name"], char["personality"], char["backstory"])
 
     image_error = None
     if req.visual or req.video:
@@ -844,6 +877,21 @@ def get_character(character_id: int):
     if not character:
         raise HTTPException(status_code=404, detail=f"Character {character_id} not found")
     return character
+
+
+@app.get("/characters/{character_id}/avatar")
+def get_character_avatar(character_id: int):
+    """PNG bytes for a character's generated portrait avatar - only
+    present if it was created with avatars=true (on /dream-to-story or
+    /villain) and generation succeeded. 404 if the character has no
+    avatar, whether because it was never requested or generation failed."""
+    character = db.get_character(character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character {character_id} not found")
+    avatar_bytes = db.get_character_avatar(character_id)
+    if avatar_bytes is None:
+        raise HTTPException(status_code=404, detail=f"Character {character_id} has no generated avatar")
+    return Response(content=avatar_bytes, media_type="image/png")
 
 
 class BranchRequest(BaseModel):
@@ -1057,6 +1105,7 @@ class VillainRequest(BaseModel):
     language: str = Field(default="hin")
     emotion: str | None = Field(default="horror")
     bgm: bool = Field(default=True)
+    avatars: bool = Field(default=False, description="Also generate a portrait avatar (OpenAI Images) for this villain. Off by default. Retrieve via GET /characters/{id}/avatar.")
 
 
 @app.post("/villain")
@@ -1077,11 +1126,15 @@ def villain(req: VillainRequest, x_api_key: str | None = Header(default=None)):
     story_id = db.save_story(title=f"Villain: {villain_name}", language=req.language, text=scene_text)
     if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
         db.save_quality_entry(story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
+    villain_personality = f"Villain designed around fears: {req.fears[:200]}"
+    villain_backstory = scene_text[:500]
     character_id = db.save_character(
-        name=villain_name, personality=f"Villain designed around fears: {req.fears[:200]}",
-        backstory=scene_text[:500], language=req.language, origin_story_id=story_id,
+        name=villain_name, personality=villain_personality,
+        backstory=villain_backstory, language=req.language, origin_story_id=story_id,
     )
     db.link_character_to_story(story_id, character_id)
+    if req.avatars:
+        _maybe_generate_avatar(character_id, villain_name, villain_personality, villain_backstory)
 
     tts_req = TTSRequest(text=scene_text, language=req.language, emotion=req.emotion, bgm=req.bgm)
     emotion, speed, noise_scale = _resolve_emotion_and_speed(tts_req)

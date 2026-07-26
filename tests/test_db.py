@@ -91,6 +91,45 @@ def test_save_and_get_character_with_voice_profile(fresh_db):
     character = fresh_db.get_character(char_id)
     assert character["name"] == "Vaal"
     assert character["voice_profile"] == "deepest"
+    assert character["has_avatar"] == 0
+
+
+def test_character_avatar_round_trip(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    char_id = fresh_db.save_character(
+        name="Vaal", personality="menacing", backstory="a villain",
+        language="hin", origin_story_id=story_id,
+    )
+    assert fresh_db.get_character_avatar(char_id) is None
+    assert fresh_db.get_character(char_id)["has_avatar"] == 0
+
+    fake_png_bytes = b"\x89PNG\r\n\x1a\nfakeavatardata"
+    fresh_db.save_character_avatar(char_id, fake_png_bytes)
+
+    assert fresh_db.get_character_avatar(char_id) == fake_png_bytes
+    assert fresh_db.get_character(char_id)["has_avatar"] == 1
+
+
+def test_get_character_excludes_raw_avatar_blob(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    char_id = fresh_db.save_character(
+        name="Vaal", personality="menacing", backstory="a villain",
+        language="hin", origin_story_id=story_id,
+    )
+    fresh_db.save_character_avatar(char_id, b"some avatar bytes")
+    character = fresh_db.get_character(char_id)
+    assert "avatar" not in character
+
+
+def test_list_characters_reports_has_avatar(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    with_avatar = fresh_db.save_character(name="A", personality="p", backstory="b", language="hin", origin_story_id=story_id)
+    without_avatar = fresh_db.save_character(name="B", personality="p", backstory="b", language="hin", origin_story_id=story_id)
+    fresh_db.save_character_avatar(with_avatar, b"bytes")
+
+    characters = {c["id"]: c for c in fresh_db.list_characters()}
+    assert characters[with_avatar]["has_avatar"] == 1
+    assert characters[without_avatar]["has_avatar"] == 0
 
 
 def test_get_story_lineage_empty_for_root_story(fresh_db):

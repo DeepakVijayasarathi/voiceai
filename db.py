@@ -58,6 +58,7 @@ def init_db() -> None:
                 language TEXT NOT NULL,
                 origin_story_id INTEGER REFERENCES stories(id),
                 voice_profile TEXT,
+                avatar BLOB,
                 created_at TEXT DEFAULT (datetime('now'))
             );
             CREATE TABLE IF NOT EXISTS story_characters (
@@ -105,6 +106,9 @@ def init_db() -> None:
             # points back at the story it's a variant of (see
             # story_gen.adapt_story_language, POST /stories/{id}/switch-language).
             conn.execute("ALTER TABLE stories ADD COLUMN variant_of_story_id INTEGER REFERENCES stories(id)")
+            conn.commit()
+        if "avatar" not in existing_char_columns:
+            conn.execute("ALTER TABLE characters ADD COLUMN avatar BLOB")
             conn.commit()
 
 
@@ -217,9 +221,18 @@ def link_character_to_story(story_id: int, character_id: int) -> None:
 
 
 def get_character(character_id: int) -> dict | None:
+    """Excludes the raw avatar BLOB (use get_character_avatar for that) -
+    same has_x reporting pattern as get_story's has_image/has_audio."""
     conn = _get_conn()
     with _lock:
-        row = conn.execute("SELECT * FROM characters WHERE id = ?", (character_id,)).fetchone()
+        row = conn.execute(
+            """
+            SELECT id, name, personality, backstory, language, origin_story_id,
+                   voice_profile, created_at, (avatar IS NOT NULL) AS has_avatar
+            FROM characters WHERE id = ?
+            """,
+            (character_id,),
+        ).fetchone()
     return dict(row) if row else None
 
 
@@ -227,10 +240,28 @@ def list_characters(limit: int = 50) -> list[dict]:
     conn = _get_conn()
     with _lock:
         rows = conn.execute(
-            "SELECT id, name, personality, language, origin_story_id, voice_profile, created_at FROM characters ORDER BY id DESC LIMIT ?",
+            """
+            SELECT id, name, personality, language, origin_story_id, voice_profile,
+                   created_at, (avatar IS NOT NULL) AS has_avatar
+            FROM characters ORDER BY id DESC LIMIT ?
+            """,
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def save_character_avatar(character_id: int, image_bytes: bytes) -> None:
+    conn = _get_conn()
+    with _lock:
+        conn.execute("UPDATE characters SET avatar = ? WHERE id = ?", (image_bytes, character_id))
+        conn.commit()
+
+
+def get_character_avatar(character_id: int) -> bytes | None:
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute("SELECT avatar FROM characters WHERE id = ?", (character_id,)).fetchone()
+    return bytes(row["avatar"]) if row and row["avatar"] is not None else None
 
 
 def save_scene_image(
