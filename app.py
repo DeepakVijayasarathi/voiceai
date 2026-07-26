@@ -23,6 +23,7 @@ from contextlib import asynccontextmanager
 import numpy as np
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import db
@@ -36,11 +37,19 @@ from engine import (
     _MAX_SYNTH_RETRIES,
     _MIN_CHARS_PER_SEC,
 )
+from export import ExportError, build_comic_panels, build_game_tree, render_video
+from images import STATIC_DIR, ImageGenError, generate_scene_image, generate_visual_prompts, save_scene_image
 from lang_detect import detect_language
 from mixed_lang import resolve_mixed_language
 from normalize import normalize_text
+from quality import QUALITY_THRESHOLD, score_and_maybe_rewrite
 from ratelimit import RateLimitMiddleware
-from image_gen import ImageGenError, generate_story_image
+# image_gen/video_gen power the single-cover-image "visual"/"video" feature
+# on /dream-to-story - distinct from images.py's multi-scene, time-synced
+# "images" feature (see db.py's save_story_image vs save_scene_image
+# docstrings). image_gen.ImageGenError is aliased to avoid shadowing
+# images.ImageGenError, imported just above under the same bare name.
+from image_gen import ImageGenError as CoverImageGenError, generate_story_image
 from video_gen import VideoGenError, compose_video
 from sfx import SFX_TYPES, get_sfx_loop
 from voice_profile import PROFILE_NAMES, _PROFILES, assign_profiles, apply_voice_profile, get_speed_multiplier
@@ -48,6 +57,7 @@ from story_gen import (
     LANGUAGE_CULTURAL_CONTEXT,
     TARGET_CHAR_BUDGET,
     StoryGenError,
+    adapt_story_language,
     extract_characters,
     generate_continuation,
     generate_story,
@@ -124,6 +134,14 @@ async def lifespan(app: FastAPI):
         get_bgm_loop(genre)
     logger.info("all %d bgm genre loops pre-generated in %.2fs", len(GENRES), time.time() - t0)
 
+    # Serves generated scene images (and saved narration audio for video/
+    # comic export) - directory must exist before StaticFiles mounts it.
+    # Deferred to startup (not module level) for the same reason db.init_db()
+    # and engine.load_all() are: importing app.py (e.g. from tests) must
+    # stay a cheap, side-effect-free operation.
+    os.makedirs(STATIC_DIR, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
     yield
 
 
@@ -132,6 +150,13 @@ app.add_middleware(
     RateLimitMiddleware,
     requests_per_minute=int(os.environ.get("INDIC_TTS_RATE_LIMIT_PER_MIN", "60")),
 )
+# CORS (including Access-Control-Expose-Headers, without which custom
+# X-Story-Id/X-Quality-*/etc. response headers are invisible to browser JS
+# on a cross-origin request - e.g. this API's own web UI) is handled at the
+# nginx layer in front of this service, not here - see indic-tts-fast.nginx.
+# Adding a second CORS layer in FastAPI risks emitting duplicate
+# Access-Control-* headers (nginx's plus this app's), which browsers treat
+# as an invalid response and reject entirely - worse than doing nothing.
 
 
 class TTSRequest(BaseModel):
@@ -141,6 +166,8 @@ class TTSRequest(BaseModel):
     emotion: str | None = Field(default=None, description="One of: " + ", ".join(EMOTION_PRESETS) + ", or 'auto' to classify from the text via OpenAI.")
     bgm: bool = Field(default=False, description="Mix in a procedurally-generated, mood-matched ambient background pad (not licensed/produced music - see /health).")
     speaker: str | None = Field(default=None, description="Reserved, unused - use POST /clone for voice cloning instead.")
+    images: bool = Field(default=False, description="Also generate scene illustrations via OpenAI Images, mapped to approximate time ranges - see GET /stories/{id}/images. Saves this text as a story (title = first 80 chars) so images have somewhere to attach. Off by default: adds real per-image latency and OpenAI cost.")
+    max_images: int = Field(default=4, ge=1, le=6, description="Max number of scene images to generate when images=true.")
 
 
 class CloneRequest(BaseModel):
@@ -157,8 +184,10 @@ class DreamToStoryRequest(BaseModel):
     language: str = Field(default="hin", description="ISO 639-3 code for the generated story's language, e.g. 'hin', 'tam'.")
     emotion: str | None = Field(default="auto", description="One of: " + ", ".join(EMOTION_PRESETS) + ", or 'auto' to classify from the generated story via OpenAI (default).")
     bgm: bool = Field(default=True, description="Mix in genre-matched background ambience (on by default for this endpoint - it's built for dramatic narration).")
-    visual: bool = Field(default=False, description="Also generate a cover/scene image via OpenAI's image API depicting the story's strongest visual moment. Off by default - a real cost/latency commitment per image, unlike the cheap text calls elsewhere. Retrieve via GET /stories/{id}/image.")
+    visual: bool = Field(default=False, description="Also generate a single cover/scene image via OpenAI's image API depicting the story's strongest visual moment. Off by default - a real cost/latency commitment per image, unlike the cheap text calls elsewhere. Retrieve via GET /stories/{id}/image. Distinct from images=true below - this is one cover image, not a time-synced storyboard.")
     video: bool = Field(default=False, description="Also compose a downloadable/shareable MP4 (the cover image held for the full narration) via ffmpeg. Implies visual=true (video needs a cover image) even if visual wasn't separately set. Off by default. Retrieve via GET /stories/{id}/video.")
+    images: bool = Field(default=False, description="Also generate several scene illustrations via OpenAI Images, mapped to approximate time ranges in the narration - see GET /stories/{id}/images. Off by default: adds real per-image latency and OpenAI cost on top of narration. Distinct from visual=true above - this is a multi-image, time-synced storyboard, not one cover image.")
+    max_images: int = Field(default=4, ge=1, le=6, description="Max number of scene images to generate when images=true.")
 
 
 def _check_auth(x_api_key: str | None) -> None:
@@ -217,7 +246,7 @@ def _synthesize_long_form(
     bgm: bool = False, bgm_fallback: str = "neutral",
     known_characters: list[str] | None = None,
     personality_hints: dict[str, str] | None = None,
-) -> tuple[np.ndarray, int]:
+) -> tuple[np.ndarray, int, list[tuple[int, int]], list[str]]:
     """Splits long text into sentence-grouped chunks (~_CHUNK_CHAR_BUDGET
     chars each), synthesizes each separately, and concatenates with a
     short silence gap - keeps each individual VITS forward pass fast and
@@ -291,16 +320,122 @@ def _synthesize_long_form(
         cursor += len(audio)
         chunk_offsets.append((start, cursor))
     combined = np.concatenate(parts).astype(np.float32)
+    raw_chunk_texts = [raw for raw, _ in included]
 
     if not bgm:
-        return combined, sr
+        return combined, sr, chunk_offsets, raw_chunk_texts
 
     if scenes is None:
-        return mix_with_bgm(combined, sr, mood=bgm_fallback), sr
+        return mix_with_bgm(combined, sr, mood=bgm_fallback), sr, chunk_offsets, raw_chunk_texts
 
     segments = [(start, end, (scene["genre"], scene["bgm_intensity"])) for (start, end), scene in zip(chunk_offsets, scenes)]
     sfx_segments = [(start, end, (scene["sfx"], scene["sfx_intensity"])) for (start, end), scene in zip(chunk_offsets, scenes)]
-    return mix_with_scene_bgm(combined, sr, segments, sfx_segments=sfx_segments), sr
+    return mix_with_scene_bgm(combined, sr, segments, sfx_segments=sfx_segments), sr, chunk_offsets, raw_chunk_texts
+
+
+def _map_beats_to_time(
+    beats: list[dict], raw_chunks: list[str], chunk_offsets: list[tuple[int, int]], sr: int,
+) -> list[dict]:
+    """Maps each visual beat (from images.generate_visual_prompts) to an
+    approximate time range in the synthesized audio, by locating its
+    "excerpt" within the raw sentence-grouped chunks used for synthesis
+    (see _synthesize_long_form's chunk_offsets/raw_chunk_texts). A beat
+    whose excerpt can't be located verbatim (GPT sometimes paraphrases
+    rather than quoting exactly) falls back to spreading it evenly across
+    the chunk range in beat order - same "use what's real, don't discard
+    on a partial match failure" posture as emotion._reconcile_length."""
+    n_chunks = len(raw_chunks)
+    if n_chunks == 0 or not beats:
+        return []
+
+    def _locate(excerpt: str) -> int:
+        needle = excerpt.strip()[:30].strip()
+        if not needle:
+            return -1
+        for i, chunk in enumerate(raw_chunks):
+            if needle in chunk:
+                return i
+        return -1
+
+    def _fallback_index(i: int) -> int:
+        return min(n_chunks - 1, int(i * n_chunks / len(beats)))
+
+    located = [_locate(b.get("excerpt", "")) for b in beats]
+    results = []
+    for i, beat in enumerate(beats):
+        chunk_idx = located[i] if located[i] != -1 else _fallback_index(i)
+        start_sample, _ = chunk_offsets[chunk_idx]
+        if i + 1 < len(beats):
+            next_idx = located[i + 1] if located[i + 1] != -1 else _fallback_index(i + 1)
+            next_idx = max(next_idx, chunk_idx)
+            end_sample = chunk_offsets[next_idx][0]
+        else:
+            end_sample = chunk_offsets[-1][1]
+        start_s = start_sample / sr
+        end_s = max(end_sample / sr, start_s + 0.1)
+        results.append({
+            "excerpt": beat.get("excerpt", ""),
+            "visual_prompt": beat.get("visual_prompt", ""),
+            "start_time_s": start_s,
+            "end_time_s": end_s,
+        })
+    return results
+
+
+def _quality_headers(quality_scores: dict) -> dict:
+    """Small set of ASCII-safe headers surfacing the quality-scoring result
+    (see quality.score_and_maybe_rewrite) alongside a story response, so a
+    client can show it without a separate request."""
+    return {
+        "X-Quality-Scored": str(bool(quality_scores.get("scored"))).lower(),
+        "X-Quality-Overall": str(quality_scores.get("overall", "")),
+        "X-Quality-Rewritten": str(bool(quality_scores.get("rewrite_attempted"))).lower(),
+    }
+
+
+def _maybe_generate_scene_images(
+    max_images: int, story_id: int, story_text: str, language: str,
+    character_names: list[str], chunk_offsets: list[tuple[int, int]], raw_chunks: list[str],
+    audio: np.ndarray, sr: int,
+) -> int:
+    """Shared scene-image pipeline used by both /tts (images=true) and
+    /dream-to-story: generates up to max_images scene illustrations,
+    persists them, and - only if at least one succeeded - saves the
+    narration audio to disk (needed later by video export). Returns the
+    number of images actually generated. Best-effort: any failure here is
+    logged and swallowed, never fails the request that's already produced
+    valid narration audio."""
+    image_count = 0
+    try:
+        beats = generate_visual_prompts(story_text, language, character_names, max_beats=max_images)
+        mapped_beats = _map_beats_to_time(beats, raw_chunks, chunk_offsets, sr)
+        for idx, beat in enumerate(mapped_beats):
+            try:
+                image_bytes = generate_scene_image(beat["visual_prompt"])
+                url = save_scene_image(story_id, idx, image_bytes)
+                db.save_scene_image(
+                    story_id, idx, beat["start_time_s"], beat["end_time_s"],
+                    beat["excerpt"], beat["visual_prompt"], url,
+                )
+                image_count += 1
+            except ImageGenError as e:
+                logger.warning("scene image %d failed for story_id=%s (non-fatal): %s", idx, story_id, e)
+        if image_count:
+            _save_story_audio(story_id, audio, sr)
+    except Exception:
+        logger.exception("scene image pipeline failed for story_id=%s (non-fatal)", story_id)
+    return image_count
+
+
+def _save_story_audio(story_id: int, audio: np.ndarray, sr: int) -> None:
+    """Persists narration audio to STATIC_DIR/audio/{story_id}.wav so a
+    later video export (see export.render_video) can mux it against scene
+    images without re-synthesizing. Only called when images were actually
+    generated for a story - other endpoints don't need audio on disk."""
+    audio_dir = os.path.join(STATIC_DIR, "audio")
+    os.makedirs(audio_dir, exist_ok=True)
+    with open(os.path.join(audio_dir, f"{story_id}.wav"), "wb") as f:
+        f.write(_wav_bytes(audio, sr))
 
 
 def _pcm16_bytes(audio: np.ndarray) -> bytes:
@@ -332,6 +467,9 @@ def health():
         "bgm_note": "bgm=true mixes in a procedurally-generated, mood-matched chord progression + rhythm track, scene-classified per-chunk on multi-scene stories, auto-ducked against the speech envelope - not licensed/produced music.",
         "sfx_note": "Multi-scene bgm requests also layer environmental sound effects (rain, wind, thunder, lightning, fire, footsteps, car, traffic, crowd, door_creak, glass_break, birds, water, dog_bark) with a per-scene intensity (0-1, how prominent the sound should be) plus a touch of reverb for spatial blend, when the text describes them, classified in the same batched call as genre - which now also gets its own independent bgm_intensity (0-1) so the music itself swells for dramatic beats and recedes for quiet ones, not just switches genre. This is a broad hand-built palette OpenAI picks from freely with dynamic intensity, not arbitrary open-ended sound generation - that would need a dedicated generative-audio model this service doesn't have.",
         "clarity_note": "noise_scale (VITS's stochastic-expressiveness knob) is now tuned per emotion, all at or below the model's own default, for more consistent pronunciation - previously computed but silently discarded, now actually applied.",
+        "quality_note": "Story text from /dream-to-story, /stories/{id}/branch, /characters/{id}/revive, and /villain is scored by an independent second OpenAI call on 4 axes (native-sounding, tone-appropriateness, cultural-accuracy, emotional-delivery) before narration. A low score triggers ONE automatic rewrite targeting the weak axes; whichever version scores higher is what gets narrated. This judges the generated TEXT only, not the synthesized audio's pronunciation - nothing on this box can evaluate audio quality. Stories still below threshold after the rewrite attempt are visible at GET /quality/backlog.",
+        "export_note": "GET /stories/{id}/game-tree exposes the existing branch feature as a navigable choice-tree (interactive fiction, not a game engine). GET /stories/{id}/comic returns scene images + native-script captions as JSON panels for a client to render (no server-side speech-bubble compositing - that would need a bundled Unicode font per script). POST /stories/{id}/render/video builds an ffmpeg slideshow from scene images + saved narration audio - requires the story to have been generated with images=true AND the ffmpeg binary to be installed on this host (checked at call time, returns 501 if missing rather than crashing).",
+        "images_note": "images=true on /tts or /dream-to-story generates up to max_images scene illustrations via OpenAI's image API (gpt-image-1 by default), mapped to approximate time ranges in the narration via GET /stories/{id}/images - off by default since it adds real per-image latency and OpenAI cost on top of narration. On /tts this also saves the input text as a story (needed so images have somewhere to attach). Best-effort: a failed prompt/image generation drops that one scene rather than failing the whole request.",
         "voice_note": "This engine has ONE fixed voice per language - no true multi-speaker model backs it. On /dream-to-story, /stories/{id}/branch, and /characters/{id}/revive, dialogue lines attributed to a known named character get a deterministic per-character pitch/EQ treatment plus a slight speaking-pace offset on that same base voice (see voice_profile.py), and the specific treatment is chosen to fit that character's personality (a menacing villain leans deep and speaks a touch slower, a cheerful/young character leans bright and speaks a touch faster) rather than assigned arbitrarily - a real, audible differentiation, but still one underlying voice, not separate speakers.",
         "visual_note": "POST /dream-to-story accepts visual=true (off by default) to also generate a cover/scene image via OpenAI's image API, depicting the story's single strongest visual moment - a two-step process (derive an English scene prompt from the native-script story, then generate from that). Retrieve via GET /stories/{id}/image. Off by default: a real per-image cost/latency commitment, unlike the cheap text classification calls elsewhere. Generation failure is non-fatal to the request (audio still returns) and reported via X-Has-Image/X-Image-Error-B64 headers.",
         "video_note": "POST /dream-to-story also accepts video=true (implies visual=true) to compose a real, shareable MP4 (the cover image held for the full narration) via ffmpeg - retrieve via GET /stories/{id}/video. This is NOT AI-generated moving video (that needs a fundamentally different, much slower/costlier generative-video model this service doesn't have access to) - it's a static-image-plus-audio mux, honest about what it is.",
@@ -436,7 +574,7 @@ def tts(req: TTSRequest, x_api_key: str | None = Header(default=None)):
     _metrics["requests_total"] += 1
     t0 = time.time()
     try:
-        audio, sr = _synthesize_long_form(req.text, lang, speed, noise_scale=noise_scale, bgm=req.bgm, bgm_fallback=emotion or "neutral")
+        audio, sr, chunk_offsets, raw_chunks = _synthesize_long_form(req.text, lang, speed, noise_scale=noise_scale, bgm=req.bgm, bgm_fallback=emotion or "neutral")
     except ValueError as e:
         _metrics["requests_failed"] += 1
         raise HTTPException(status_code=400, detail=str(e))
@@ -446,7 +584,16 @@ def tts(req: TTSRequest, x_api_key: str | None = Header(default=None)):
         raise HTTPException(status_code=500, detail="Speech generation failed")
     _metrics["synth_seconds_total"] += time.time() - t0
 
-    return Response(content=_wav_bytes(audio, sr), media_type="audio/wav")
+    headers = {"X-Resolved-Emotion": emotion or "none"}
+    if req.images:
+        story_id = db.save_story(title=req.text[:80], language=lang, text=req.text)
+        image_count = _maybe_generate_scene_images(
+            req.max_images, story_id, req.text, lang, [], chunk_offsets, raw_chunks, audio, sr,
+        )
+        headers["X-Story-Id"] = str(story_id)
+        headers["X-Image-Count"] = str(image_count)
+
+    return Response(content=_wav_bytes(audio, sr), media_type="audio/wav", headers=headers)
 
 
 @app.post("/clone")
@@ -481,8 +628,11 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
         story_text = generate_story(req.description, req.language)
     except StoryGenError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    story_text, quality_scores = score_and_maybe_rewrite(story_text, req.language)
 
     story_id = db.save_story(title=req.description[:80], language=req.language, text=story_text)
+    if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
+        db.save_quality_entry(story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
     character_ids = []
     character_names = []
     personality_hints = {}
@@ -502,7 +652,7 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
         try:
             image_bytes = generate_story_image(story_text)
             db.save_story_image(story_id, image_bytes)
-        except ImageGenError as e:
+        except CoverImageGenError as e:
             logger.warning("visual generation failed for story_id=%s (non-fatal): %s", story_id, e)
             image_error = str(e)
 
@@ -513,7 +663,7 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
     _metrics["requests_total"] += 1
     t0 = time.time()
     try:
-        audio, sr = _synthesize_long_form(
+        audio, sr, chunk_offsets, raw_chunks = _synthesize_long_form(
             story_text, lang, speed, noise_scale=noise_scale, bgm=req.bgm,
             bgm_fallback=emotion or "neutral", known_characters=character_names,
             personality_hints=personality_hints,
@@ -530,12 +680,21 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
         # only requests don't carry this hundred-KB-to-MB blob into the DB.
         db.save_story_audio(story_id, wav_bytes)
 
+    image_count = 0
+    if req.images:
+        image_count = _maybe_generate_scene_images(
+            req.max_images, story_id, story_text, req.language, character_names,
+            chunk_offsets, raw_chunks, audio, sr,
+        )
+
     story_b64 = base64.b64encode(story_text.encode("utf-8")).decode("ascii")
     headers = {
         "X-Story-Text-B64": story_b64,
         "X-Resolved-Emotion": emotion or "none",
         "X-Story-Id": str(story_id),
         "X-Character-Ids": ",".join(str(c) for c in character_ids),
+        "X-Image-Count": str(image_count),
+        **_quality_headers(quality_scores),
     }
     if req.visual or req.video:
         headers["X-Has-Image"] = "true" if image_error is None else "false"
@@ -603,6 +762,77 @@ def get_story_video(story_id: int):
     return Response(content=video_bytes, media_type="video/mp4")
 
 
+@app.get("/stories/{story_id}/images")
+def get_story_images(story_id: int):
+    """Scene illustrations generated for this story (only present if it was
+    created with images=true) - each mapped to an approximate time range in
+    the narration, see images.py/_map_beats_to_time for how that mapping
+    works and its limits. Distinct from GET /stories/{id}/image (singular)
+    above, which is a single cover image."""
+    story = db.get_story(story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+    images = db.get_images_for_story(story_id)
+    return {
+        "images": [
+            {
+                "start_time_s": img["start_time_s"],
+                "end_time_s": img["end_time_s"],
+                "url": img["url"],
+                "excerpt": img["excerpt"],
+            }
+            for img in images
+        ]
+    }
+
+
+@app.get("/quality/backlog")
+def quality_backlog(limit: int = 50):
+    """Stories whose generated text scored below quality.QUALITY_THRESHOLD
+    on at least one axis even after the one automatic rewrite attempt (see
+    quality.score_and_maybe_rewrite) - a visible backlog of weak spots
+    rather than a log of every generation."""
+    return {"backlog": db.list_quality_backlog(limit=limit)}
+
+
+@app.get("/stories/{story_id}/game-tree")
+def get_game_tree(story_id: int):
+    """This story's branches (see POST /stories/{id}/branch), recursively,
+    as a navigable choice-tree - see export.build_game_tree's docstring.
+    "Game" here means interactive fiction (walk the tree, each node's
+    children are the available choices), not a game engine."""
+    try:
+        return build_game_tree(story_id)
+    except ExportError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+@app.get("/stories/{story_id}/comic")
+def get_comic(story_id: int):
+    """This story's scene images as comic panels - see
+    export.build_comic_panels's docstring. Empty panels (not an error) for
+    a story that wasn't generated with images=true."""
+    try:
+        return build_comic_panels(story_id)
+    except ExportError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+@app.post("/stories/{story_id}/render/video")
+def render_story_video(story_id: int, x_api_key: str | None = Header(default=None)):
+    """Renders an MP4 slideshow from this story's scene images and saved
+    narration audio - see export.render_video's docstring, including why
+    it requires images=true to have been used and the `ffmpeg` binary to
+    be installed on this host. Distinct from GET /stories/{id}/video above,
+    which composes from a single cover image instead."""
+    _check_auth(x_api_key)
+    try:
+        video_bytes = render_video(story_id)
+    except ExportError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    return Response(content=video_bytes, media_type="video/mp4")
+
+
 @app.get("/characters")
 def list_characters(limit: int = 50):
     return {"characters": db.list_characters(limit=limit)}
@@ -624,23 +854,32 @@ class BranchRequest(BaseModel):
 
 @app.post("/stories/{story_id}/branch")
 def branch_story(story_id: int, req: BranchRequest, x_api_key: str | None = Header(default=None)):
-    """'Story Time Machine' subset - see story_gen.generate_continuation's
-    docstring for exactly what this does and doesn't guarantee about
-    consistency."""
+    """'Story Time Machine' subset - passes this branch's full ancestor
+    lineage (see db.get_story_lineage), not just its direct parent, so a
+    branch-of-a-branch stays consistent with the whole chain of prior
+    changes. See story_gen.generate_continuation's docstring for exactly
+    what this does and doesn't guarantee about consistency."""
     _check_auth(x_api_key)
     parent = db.get_story(story_id)
     if not parent:
         raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
 
+    lineage = db.get_story_lineage(story_id)
+    ancestor_summaries = [a["branch_note"] for a in lineage if a.get("branch_note")]
     try:
-        continuation = generate_continuation(parent["text"], req.changed_decision, parent["language"])
+        continuation = generate_continuation(
+            parent["text"], req.changed_decision, parent["language"], ancestor_summaries=ancestor_summaries,
+        )
     except StoryGenError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    continuation, quality_scores = score_and_maybe_rewrite(continuation, parent["language"])
 
     new_story_id = db.save_story(
         title=f"Branch of #{story_id}", language=parent["language"], text=continuation,
         parent_story_id=story_id, branch_note=req.changed_decision,
     )
+    if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
+        db.save_quality_entry(new_story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
     story_characters = db.get_characters_for_story(story_id)
     character_names = [c["name"] for c in story_characters]
     personality_hints = {c["name"]: c["voice_profile"] for c in story_characters if c.get("voice_profile")}
@@ -653,7 +892,7 @@ def branch_story(story_id: int, req: BranchRequest, x_api_key: str | None = Head
     _metrics["requests_total"] += 1
     t0 = time.time()
     try:
-        audio, sr = _synthesize_long_form(
+        audio, sr, _chunk_offsets, _raw_chunks = _synthesize_long_form(
             continuation, parent["language"], speed, noise_scale=noise_scale, bgm=req.bgm,
             bgm_fallback=emotion or "neutral", known_characters=character_names,
             personality_hints=personality_hints,
@@ -668,7 +907,92 @@ def branch_story(story_id: int, req: BranchRequest, x_api_key: str | None = Head
     return Response(
         content=_wav_bytes(audio, sr),
         media_type="audio/wav",
-        headers={"X-Story-Text-B64": story_b64, "X-Story-Id": str(new_story_id), "X-Parent-Story-Id": str(story_id)},
+        headers={
+            "X-Story-Text-B64": story_b64, "X-Story-Id": str(new_story_id), "X-Parent-Story-Id": str(story_id),
+            **_quality_headers(quality_scores),
+        },
+    )
+
+
+@app.get("/stories/{story_id}/variants")
+def get_story_variants(story_id: int):
+    """Other-language adaptations of this story (see POST
+    /stories/{id}/switch-language), so a client can offer 'listen in...'
+    switching between them."""
+    story = db.get_story(story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+    return {"variants": db.get_variants(story_id)}
+
+
+class SwitchLanguageRequest(BaseModel):
+    language: str = Field(..., description="ISO 639-3 code to adapt this story into, e.g. 'tam', 'ben'.")
+    emotion: str | None = Field(default="auto")
+    bgm: bool = Field(default=True)
+
+
+@app.post("/stories/{story_id}/switch-language")
+def switch_language(story_id: int, req: SwitchLanguageRequest, x_api_key: str | None = Header(default=None)):
+    """'Switch language' subset - see story_gen.adapt_story_language's
+    docstring for what this actually does: retells the same story, same
+    characters, in a new language, saved as a new story linked back via
+    variant_of_story_id (see GET /stories/{id}/variants). This is NOT one
+    audio stream that changes language mid-sentence - VITS is a separate
+    model per language, so that's not a meaningful operation here.
+    "Switching mid-story" means resuming the same story, same characters,
+    from a saved variant in the new language."""
+    _check_auth(x_api_key)
+    original = db.get_story(story_id)
+    if not original:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+    if req.language not in engine.languages():
+        raise HTTPException(status_code=400, detail=f"Unsupported language '{req.language}'. Supported: {list(engine.languages())}")
+    if req.language == original["language"]:
+        raise HTTPException(status_code=400, detail=f"Story {story_id} is already in language '{req.language}'")
+
+    try:
+        adapted_text = adapt_story_language(original["text"], original["language"], req.language)
+    except StoryGenError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    adapted_text, quality_scores = score_and_maybe_rewrite(adapted_text, req.language)
+
+    new_story_id = db.save_story(
+        title=f"{original['title'] or 'Story #' + str(story_id)} ({req.language})",
+        language=req.language, text=adapted_text, variant_of_story_id=story_id,
+    )
+    if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
+        db.save_quality_entry(new_story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
+    story_characters = db.get_characters_for_story(story_id)
+    character_names = [c["name"] for c in story_characters]
+    personality_hints = {c["name"]: c["voice_profile"] for c in story_characters if c.get("voice_profile")}
+    for c in story_characters:
+        db.link_character_to_story(new_story_id, c["id"])
+
+    tts_req = TTSRequest(text=adapted_text, language=req.language, emotion=req.emotion, bgm=req.bgm)
+    emotion, speed, noise_scale = _resolve_emotion_and_speed(tts_req)
+
+    _metrics["requests_total"] += 1
+    t0 = time.time()
+    try:
+        audio, sr, _chunk_offsets, _raw_chunks = _synthesize_long_form(
+            adapted_text, req.language, speed, noise_scale=noise_scale, bgm=req.bgm,
+            bgm_fallback=emotion or "neutral", known_characters=character_names,
+            personality_hints=personality_hints,
+        )
+    except Exception:
+        _metrics["requests_failed"] += 1
+        logger.exception("switch-language synthesis failed for story_id=%s -> %s", story_id, req.language)
+        raise HTTPException(status_code=500, detail="Speech generation failed")
+    _metrics["synth_seconds_total"] += time.time() - t0
+
+    story_b64 = base64.b64encode(adapted_text.encode("utf-8")).decode("ascii")
+    return Response(
+        content=_wav_bytes(audio, sr),
+        media_type="audio/wav",
+        headers={
+            "X-Story-Text-B64": story_b64, "X-Story-Id": str(new_story_id), "X-Variant-Of-Story-Id": str(story_id),
+            **_quality_headers(quality_scores),
+        },
     )
 
 
@@ -694,10 +1018,13 @@ def revive(character_id: int, req: ReviveRequest, x_api_key: str | None = Header
         )
     except StoryGenError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    story_text, quality_scores = score_and_maybe_rewrite(story_text, character["language"])
 
     new_story_id = db.save_story(
         title=f"{character['name']} revived", language=character["language"], text=story_text,
     )
+    if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
+        db.save_quality_entry(new_story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
     db.link_character_to_story(new_story_id, character_id)
 
     tts_req = TTSRequest(text=story_text, language=character["language"], emotion=req.emotion, bgm=req.bgm)
@@ -706,7 +1033,7 @@ def revive(character_id: int, req: ReviveRequest, x_api_key: str | None = Header
     _metrics["requests_total"] += 1
     t0 = time.time()
     try:
-        audio, sr = _synthesize_long_form(
+        audio, sr, _chunk_offsets, _raw_chunks = _synthesize_long_form(
             story_text, character["language"], speed, noise_scale=noise_scale, bgm=req.bgm,
             bgm_fallback=emotion or "neutral", known_characters=[character["name"]],
             personality_hints={character["name"]: character["voice_profile"]} if character.get("voice_profile") else None,
@@ -721,7 +1048,7 @@ def revive(character_id: int, req: ReviveRequest, x_api_key: str | None = Header
     return Response(
         content=_wav_bytes(audio, sr),
         media_type="audio/wav",
-        headers={"X-Story-Text-B64": story_b64, "X-Story-Id": str(new_story_id)},
+        headers={"X-Story-Text-B64": story_b64, "X-Story-Id": str(new_story_id), **_quality_headers(quality_scores)},
     )
 
 
@@ -745,8 +1072,11 @@ def villain(req: VillainRequest, x_api_key: str | None = Header(default=None)):
         villain_name, scene_text = generate_villain(req.fears, req.language)
     except StoryGenError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    scene_text, quality_scores = score_and_maybe_rewrite(scene_text, req.language)
 
     story_id = db.save_story(title=f"Villain: {villain_name}", language=req.language, text=scene_text)
+    if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
+        db.save_quality_entry(story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
     character_id = db.save_character(
         name=villain_name, personality=f"Villain designed around fears: {req.fears[:200]}",
         backstory=scene_text[:500], language=req.language, origin_story_id=story_id,
@@ -759,7 +1089,7 @@ def villain(req: VillainRequest, x_api_key: str | None = Header(default=None)):
     _metrics["requests_total"] += 1
     t0 = time.time()
     try:
-        audio, sr = _synthesize_long_form(scene_text, req.language, speed, noise_scale=noise_scale, bgm=req.bgm, bgm_fallback=emotion or "horror")
+        audio, sr, _chunk_offsets, _raw_chunks = _synthesize_long_form(scene_text, req.language, speed, noise_scale=noise_scale, bgm=req.bgm, bgm_fallback=emotion or "horror")
     except Exception:
         _metrics["requests_failed"] += 1
         logger.exception("villain synthesis failed")
@@ -775,6 +1105,7 @@ def villain(req: VillainRequest, x_api_key: str | None = Header(default=None)):
             "X-Villain-Name-B64": base64.b64encode(villain_name.encode("utf-8")).decode("ascii"),
             "X-Story-Id": str(story_id),
             "X-Character-Id": str(character_id),
+            **_quality_headers(quality_scores),
         },
     )
 

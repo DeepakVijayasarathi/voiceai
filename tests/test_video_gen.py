@@ -1,4 +1,5 @@
 import io
+import shutil
 import wave
 
 import numpy as np
@@ -6,6 +7,8 @@ import pytest
 from PIL import Image
 
 from video_gen import VideoGenError, compose_video
+
+_HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
 
 def _tiny_png() -> bytes:
@@ -27,6 +30,7 @@ def _tiny_wav(duration_s: float = 0.5, sr: int = 24000) -> bytes:
     return buf.getvalue()
 
 
+@pytest.mark.skipif(not _HAS_FFMPEG, reason="ffmpeg not installed on this host")
 def test_compose_video_produces_valid_mp4():
     video_bytes = compose_video(_tiny_png(), _tiny_wav())
     assert len(video_bytes) > 0

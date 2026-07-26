@@ -3,413 +3,580 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Indic Fast TTS</title>
+<title>Infinity Studio — Cultural Story Operating System</title>
+<link rel="icon" href="logo.png">
 <style>
   :root {
-    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #e6e8eb;
-    --muted: #9aa3b2; --accent: #4f8cff; --accent-hover: #6fa0ff;
-    --error: #ff5d5d; --ok: #3ecf8e;
+    --grad-1: #1fc8d8;
+    --grad-2: #6a5ae0;
+    --grad-3: #b23fd6;
+    --grad-4: #ec3a83;
+    --grad-5: #ff8a3d;
+    --gradient: linear-gradient(90deg, var(--grad-1), var(--grad-2), var(--grad-3), var(--grad-4), var(--grad-5));
+    --bg: #f7f7f5;
+    --bg-soft: #efeee9;
+    --panel: #ffffff;
+    --border: #e5e3dc;
+    --text: #171b34;
+    --muted: #6b7085;
+    --shadow: 0 1px 2px rgba(23,27,52,.05), 0 10px 30px rgba(23,27,52,.06);
+    --ok: #1fae72;
+    --warn: #e8a41c;
+    --error: #e0435e;
+    --radius: 16px;
   }
-  @media (prefers-color-scheme: light) {
-    :root { --bg: #f5f6f8; --panel: #ffffff; --border: #e1e4e9; --text: #14161a;
-      --muted: #5b6472; --accent: #2f6fed; --accent-hover: #1e5cd8; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0d1a;
+      --bg-soft: #11142a;
+      --panel: #141830;
+      --border: #262b4c;
+      --text: #edeefb;
+      --muted: #9298ba;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+      --ok: #33d495;
+      --warn: #f0b93e;
+      --error: #ff5c78;
+    }
   }
   * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
   body {
-    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg); color: var(--text); min-height: 100vh;
-    display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    -webkit-font-smoothing: antialiased;
   }
-  body > div { width: 100%; max-width: 640px; }
-  .card { width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 14px; padding: 28px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
-  textarea, select, input[type=text], input[type=password] {
-    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit;
+  #root { min-height: 100vh; }
+  a { color: inherit; }
+
+  .app-shell { display: flex; min-height: 100vh; }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    width: 240px; flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 20px 14px; position: sticky; top: 0; height: 100vh;
+    overflow-y: auto;
   }
-  textarea { resize: vertical; min-height: 90px; }
-  .row { display: flex; gap: 12px; }
-  .row > div { flex: 1; }
-  .row2 { display: flex; gap: 12px; align-items: center; }
-  input[type=range] { width: 100%; }
-  button {
-    margin-top: 22px; width: 100%; background: var(--accent); color: white; border: none;
-    border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
+  .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 18px; }
+  .brand img { width: 34px; height: 34px; border-radius: 8px; }
+  .brand-text { line-height: 1.15; }
+  .brand-name {
+    font-weight: 800; font-size: 15px; letter-spacing: .02em;
+    background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  button:hover { background: var(--accent-hover); }
-  button:disabled { opacity: .5; cursor: default; }
-  .status { margin-top: 14px; font-size: 13px; min-height: 18px; }
+  .brand-sub { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+  .navlist { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .navitem {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+    font-size: 13.5px; font-weight: 600; color: var(--muted); cursor: pointer; user-select: none;
+    border: 1px solid transparent;
+  }
+  .navitem:hover { background: var(--bg-soft); color: var(--text); }
+  .navitem.active { background: var(--bg-soft); color: var(--text); border-color: var(--border); }
+  .navitem .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--gradient); flex-shrink: 0;
+    opacity: .35;
+  }
+  .navitem.active .dot { opacity: 1; }
+  .navicon { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .navicon svg { width: 17px; height: 17px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 4px; }
+  .stat-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px;
+    box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px;
+  }
+  .stat-card .stat-icon {
+    width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: var(--gradient); color: white; flex-shrink: 0;
+  }
+  .stat-card .stat-icon svg { width: 17px; height: 17px; }
+  .stat-card .stat-value { font-size: 24px; font-weight: 800; line-height: 1; }
+  .stat-card .stat-label { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+
+  .quick-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .quick-action {
+    display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--border);
+    border-radius: 14px; background: var(--panel); cursor: pointer; transition: border-color .15s, transform .1s;
+  }
+  .quick-action:hover { border-color: var(--grad-2); transform: translateY(-1px); }
+  .quick-action .qa-icon {
+    width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: var(--bg-soft); color: var(--grad-3); flex-shrink: 0;
+  }
+  .quick-action .qa-icon svg { width: 18px; height: 18px; }
+  .quick-action .qa-label { font-size: 13px; font-weight: 700; }
+  .quick-action .qa-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  .health-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .health-pill {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+    padding: 5px 10px; border-radius: 999px; background: var(--bg-soft); border: 1px solid var(--border);
+  }
+
+  .preview-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+  .preview-row {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+    padding: 11px 13px; background: var(--bg-soft); border-radius: 10px; font-size: 12.5px;
+  }
+  .preview-row .pr-label { color: var(--text); font-weight: 700; }
+  .preview-row .pr-desc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; max-width: 320px; }
+  .preview-row .pr-value {
+    font-weight: 700; text-align: right; flex-shrink: 0; padding: 3px 10px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--border); font-size: 11.5px; white-space: nowrap;
+  }
+
+  @keyframes sweep { 0% { transform: translateX(-110%); } 100% { transform: translateX(110%); } }
+  @keyframes pulseOrb { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.18); opacity: 1; } }
+  .gen-anim { padding: 34px 10px 14px; text-align: center; }
+  .gen-orb { width: 44px; height: 44px; border-radius: 50%; background: var(--gradient); margin: 0 auto 20px;
+    animation: pulseOrb 1.4s ease-in-out infinite; }
+  .gen-bar-track { width: 100%; max-width: 320px; margin: 0 auto; height: 7px; border-radius: 999px;
+    background: var(--bg-soft); overflow: hidden; position: relative; }
+  .gen-bar-fill { position: absolute; top: 0; left: 0; height: 100%; width: 45%; border-radius: 999px;
+    background: var(--gradient); animation: sweep 1.3s ease-in-out infinite; }
+  .gen-status { margin-top: 16px; font-size: 13px; color: var(--muted); font-weight: 600; min-height: 18px; }
+
+  .apikey-box { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .apikey-box label { display: block; font-size: 10.5px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .05em; margin-bottom: 6px; }
+  .apikey-box input {
+    width: 100%; background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+  }
+
+  /* ---------- Main ---------- */
+  .main { flex: 1; min-width: 0; padding: 28px 32px 60px; max-width: 980px; }
+  .page-head { margin-bottom: 22px; }
+  .page-title { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+  .page-sub { font-size: 13.5px; color: var(--muted); margin: 0; max-width: 640px; line-height: 1.5; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 18px;
+  }
+  .card h3 { margin: 0 0 14px; font-size: 14px; font-weight: 700; }
+  .card + .card { margin-top: 18px; }
+
+  label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
+  label:first-child { margin-top: 0; }
+  textarea, select, input[type=text], input[type=password], input[type=number] {
+    width: 100%; background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px; font-size: 13.5px; font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 84px; }
+  input[type=file] {
+    width: 100%; background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 9px 12px; font-size: 12.5px;
+  }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 160px; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .checkbox-row input { width: auto; }
+  .checkbox-row label { margin: 0; font-size: 12.5px; color: var(--text); font-weight: 500; }
+
+  button.btn {
+    margin-top: 18px; border: none; border-radius: 10px; padding: 11px 18px; font-size: 13.5px;
+    font-weight: 700; cursor: pointer; color: white; background: var(--gradient);
+    background-size: 180% 100%; transition: background-position .3s ease, transform .1s ease;
+  }
+  button.btn:hover { background-position: 100% 0; }
+  button.btn:active { transform: scale(.98); }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  button.btn.ghost {
+    background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 600;
+  }
+  button.btn.small { margin-top: 0; padding: 7px 12px; font-size: 12px; }
+
+  .status { margin-top: 12px; font-size: 12.5px; min-height: 16px; }
   .status.error { color: var(--error); }
   .status.ok { color: var(--ok); }
-  audio { width: 100%; margin-top: 14px; display: none; }
-  .meta { font-size: 12px; color: var(--muted); margin-top: 6px; display: none; }
-  details { margin-top: 18px; }
-  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
-  .apikey-row { margin-top: 10px; }
-  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
-  .svc-card { width: 100%; max-width: 640px; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 14px; padding: 24px 28px; margin-top: 16px; }
-  .svc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .svc-head h2 { font-size: 15px; margin: 0; }
-  .svc-refresh { width: auto; margin: 0; padding: 6px 12px; font-size: 12px; font-weight: 500; }
-  .svc-list { display: flex; flex-direction: column; gap: 10px; }
-  .svc-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
-    border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
-  .dot.up { background: var(--ok); }
-  .dot.down { background: var(--error); }
-  .dot.pending { background: var(--muted); animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: .3; } }
-  .svc-name { font-weight: 600; min-width: 110px; }
-  .svc-port { color: var(--muted); font-size: 12px; min-width: 50px; }
-  .svc-detail { color: var(--muted); font-size: 12px; flex: 1; }
-  .svc-time { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  audio { width: 100%; margin-top: 14px; }
+  img.scene-image { width: 100%; border-radius: 12px; margin-top: 14px; display: block; background: var(--bg-soft); }
 
-  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
-  .tab { flex: 1; text-align: center; padding: 10px; font-size: 13px; font-weight: 600;
-    color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .pane { display: none; }
-  .pane.active { display: block; }
-  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
-  .checkbox-row input { width: auto; }
-  .checkbox-row label { margin: 0; font-size: 13px; color: var(--text); }
-  input[type=file] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 12px; font-size: 13px; }
-  .file-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .meta { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
 
-  .usp-banner { background: linear-gradient(135deg, rgba(79,140,255,.12), rgba(79,140,255,.03));
-    border: 1px solid rgba(79,140,255,.3); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
-  .usp-banner .usp-title { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-    color: var(--accent); margin-bottom: 4px; }
-  .usp-banner p { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; }
+  .story-output {
+    margin-top: 14px; padding: 14px 16px; background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: 12px; font-size: 13.5px; line-height: 1.7; max-height: 260px; overflow-y: auto;
+  }
+  .story-output .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .05em; margin-bottom: 8px; font-weight: 700; }
 
-  .subtabs { display: flex; gap: 4px; margin-bottom: 18px; background: var(--bg); border-radius: 8px; padding: 3px; }
-  .subtab { flex: 1; text-align: center; padding: 8px; font-size: 12.5px; font-weight: 600;
-    color: var(--muted); cursor: pointer; border-radius: 6px; }
-  .subtab.active { color: white; background: var(--accent); }
-  .subpane { display: none; }
-  .subpane.active { display: block; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
+    padding: 4px 9px; border-radius: 999px; margin-top: 10px;
+  }
+  .badge.good { background: rgba(31,174,114,.13); color: var(--ok); }
+  .badge.warn { background: rgba(232,164,28,.15); color: var(--warn); }
+  .badge.bad { background: rgba(224,67,94,.13); color: var(--error); }
+  .badge.neutral { background: var(--bg-soft); color: var(--muted); }
 
-  .story-output { margin-top: 14px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border);
-    border-radius: 8px; font-size: 13.5px; line-height: 1.6; display: none; max-height: 220px; overflow-y: auto; }
-  .story-output .story-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
-    letter-spacing: .04em; margin-bottom: 6px; }
-
-  .list-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
-    padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
+  .list-row {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 13px 14px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px;
+    font-size: 13px; background: var(--panel);
+  }
   .list-row .list-main { flex: 1; min-width: 0; }
-  .list-row .list-title { font-weight: 600; margin-bottom: 2px; }
-  .list-row .list-sub { color: var(--muted); font-size: 12px; }
-  .list-row button { margin: 0; width: auto; padding: 6px 12px; font-size: 12px; flex-shrink: 0; }
-  .list-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px 0; }
-  .inline-form { margin-top: 10px; padding: 10px; background: var(--bg); border-radius: 8px; display: none; }
-  .inline-form textarea { min-height: 60px; }
-  .inline-form button { margin-top: 8px; }
+  .list-row .list-title { font-weight: 700; margin-bottom: 3px; }
+  .list-row .list-sub { color: var(--muted); font-size: 11.5px; }
+  .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex-shrink: 0; cursor: pointer; background: var(--bg-soft); }
+  .list-actions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+  .list-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 26px 0; }
+  .inline-form { margin-top: 10px; padding: 12px; background: var(--bg-soft); border-radius: 10px; }
+  .inline-form textarea { min-height: 56px; }
+  .inline-form .row { margin-top: 8px; }
 
-  .list-thumb { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
-  .list-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .list-actions button { padding: 6px 10px; }
-  .list-btn-secondary { background: transparent !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
-  .expand-text { margin-top: 8px; padding: 10px; background: var(--bg); border-radius: 8px; font-size: 13px;
-    line-height: 1.6; display: none; max-height: 200px; overflow-y: auto; }
-  .expand-media { margin-top: 8px; display: none; }
-  .expand-media img, .expand-media video { width: 100%; border-radius: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .comic-panel { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--panel); }
+  .comic-panel img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; }
+  .comic-panel .cap { font-size: 11px; padding: 8px 10px; color: var(--muted); line-height: 1.4; }
 
-  .config-section { margin-top: 14px; }
-  .config-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-    margin: 0 0 8px; }
-  .config-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 4px; }
-  .config-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  .config-table td:first-child { color: var(--muted); white-space: nowrap; width: 40%; }
-  .config-table td:last-child { word-break: break-word; font-family: ui-monospace, Consolas, monospace; }
+  .tree-node { margin-left: 16px; border-left: 2px solid var(--border); padding-left: 14px; margin-top: 8px; }
+  .tree-node.root { margin-left: 0; border-left: none; padding-left: 0; }
+  .tree-card { padding: 10px 12px; background: var(--bg-soft); border-radius: 10px; font-size: 12.5px; }
+  .tree-card .tt { font-weight: 700; margin-bottom: 2px; }
+  .tree-card .tn { color: var(--muted); font-size: 11px; }
+
+  .svc-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; margin-bottom: 8px; }
+  .dot-status { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+  .dot-status.up { background: var(--ok); }
+  .dot-status.down { background: var(--error); }
+  .dot-status.pending { background: var(--muted); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .svc-name { font-weight: 700; min-width: 120px; }
+  .svc-detail { color: var(--muted); font-size: 11.5px; flex: 1; }
+
+  .usp-banner {
+    background: linear-gradient(135deg, rgba(31,200,216,.12), rgba(236,58,131,.06), rgba(255,138,61,.10));
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; margin-bottom: 18px;
+  }
+  .usp-banner .t { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+    background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent;
+    margin-bottom: 5px; }
+  .usp-banner p { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.6; }
+
+  .mobile-tabs { display: none; }
+  @media (max-width: 860px) {
+    .app-shell { flex-direction: column; }
+    .sidebar { display: none; }
+    .mobile-tabs {
+      display: flex; overflow-x: auto; gap: 6px; padding: 12px 14px; background: var(--panel);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5;
+    }
+    .mobile-tabs .navitem { white-space: nowrap; }
+    .main { padding: 20px 16px 50px; max-width: 100%; }
+  }
 </style>
 </head>
 <body>
-<div>
-<div class="card">
-  <h1>Indic Fast TTS</h1>
-  <p class="sub">MMS-TTS (VITS), 11 languages, CPU-only low-latency synthesis</p>
+<div id="root"></div>
 
-  <div class="tabs">
-    <div class="tab active" data-pane="genPane">Generate</div>
-    <div class="tab" data-pane="clonePane">Clone voice</div>
-    <div class="tab" data-pane="storyPane">Story Tools</div>
-  </div>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 
-  <div id="genPane" class="pane active">
-  <label for="text">Text</label>
-  <textarea id="text" placeholder="Type text in any supported language, or mix in English words...">நமஸ்தே, இன்று வானிலை மிகவும் அழகாக உள்ளது.</textarea>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
 
-  <div class="row">
-    <div>
-      <label for="language">Language</label>
-      <select id="language">
-        <option value="">Auto-detect</option>
-        <option value="tam">Tamil</option>
-        <option value="hin">Hindi</option>
-        <option value="tel">Telugu</option>
-        <option value="mal">Malayalam</option>
-        <option value="kan">Kannada</option>
-        <option value="mar">Marathi</option>
-        <option value="guj">Gujarati</option>
-        <option value="ben">Bengali</option>
-        <option value="pan">Punjabi</option>
-        <option value="ory">Odia</option>
-        <option value="asm">Assamese</option>
-      </select>
-    </div>
-    <div>
-      <label for="emotion">Emotion / genre</label>
-      <select id="emotion">
-        <option value="">None</option>
-        <option value="auto">Auto-detect (via OpenAI)</option>
-        <option value="neutral">Neutral</option>
-        <option value="happy">Happy</option>
-        <option value="sad">Sad</option>
-        <option value="excited">Excited</option>
-        <option value="calm">Calm</option>
-        <option value="horror">Horror</option>
-        <option value="romance">Romance</option>
-        <option value="action">Action</option>
-        <option value="comedy">Comedy</option>
-        <option value="devotional">Devotional</option>
-        <option value="mystery">Mystery</option>
-      </select>
-    </div>
-  </div>
+const API_BASE = "http://178.104.214.191:8604";
+// Pre-filled default so this doesn't 401 out of the box. This is a public,
+// static HTML file - anyone who views source can read this value, so it
+// must never be a billing-relevant secret (OpenAI key etc.), only this
+// service's own request-gating key.
+const DEFAULT_API_KEY = "hqC3S-oePGWbMot_HuwmvI-YqrrGoa58lKqJh8nnFhg";
 
-  <label for="speed">Speed: <span id="speedVal">1.0x</span></label>
-  <div class="row2">
-    <input type="range" id="speed" min="0.5" max="2.0" step="0.05" value="1.0">
-  </div>
-
-  <div class="checkbox-row">
-    <input type="checkbox" id="bgm">
-    <label for="bgm">Add background ambience (mood-matched, procedurally generated - not licensed music)</label>
-  </div>
-
-  <button id="genBtn">Generate speech</button>
-  <div id="status" class="status"></div>
-  <audio id="player" controls></audio>
-  <div id="meta" class="meta"></div>
-  </div>
-
-  <div id="clonePane" class="pane">
-    <label for="refAudio">Reference voice (short audio clip)</label>
-    <input type="file" id="refAudio" accept="audio/*">
-    <div class="file-hint">The voice to clone from. A few seconds of clear speech works best.</div>
-
-    <label for="refText">Reference transcript</label>
-    <textarea id="refText" placeholder="Exact text spoken in the reference clip above..."></textarea>
-
-    <label for="cloneText">Text to speak in the cloned voice</label>
-    <textarea id="cloneText" placeholder="What should the cloned voice say?"></textarea>
-
-    <div class="hint" style="margin-top: 12px;">Cloning proxies to the separate IndicF5 service and takes 30-70s (that model is much slower - see /health on port 8604 for why) - this is not a bug, cloning voice quality and speed are a real tradeoff.</div>
-
-    <button id="cloneBtn">Clone voice</button>
-    <div id="cloneStatus" class="status"></div>
-    <audio id="clonePlayer" controls></audio>
-    <div id="cloneMeta" class="meta"></div>
-  </div>
-
-  <div id="storyPane" class="pane">
-    <div class="usp-banner">
-      <div class="usp-title">What makes this different</div>
-      <p>Characters persist. Describe a scene once, and named characters are automatically saved with their personality and backstory - pull them into new settings later ("Character Resurrection"), or branch any story from a changed decision and get a consistent continuation ("Story Time Machine"). Villains aren't generic - they're built around the specific fears you describe.</p>
-    </div>
-
-    <div class="subtabs">
-      <div class="subtab active" data-subpane="dreamSub">Dream to Story</div>
-      <div class="subtab" data-subpane="villainSub">Villain</div>
-      <div class="subtab" data-subpane="browseSub">Browse &amp; Continue</div>
-    </div>
-
-    <div id="dreamSub" class="subpane active">
-      <label for="dreamDesc">Describe a dream, memory, or scene</label>
-      <textarea id="dreamDesc" placeholder="I dreamed I was walking through an old village at dusk...">A detective named Vikram investigates a locked-room murder in an old mansion, helped by his sharp-witted assistant Priya.</textarea>
-      <label for="dreamLang">Language</label>
-      <select id="dreamLang">
-        <option value="hin">Hindi</option>
-        <option value="tam">Tamil</option>
-        <option value="tel">Telugu</option>
-        <option value="mal">Malayalam</option>
-        <option value="kan">Kannada</option>
-        <option value="mar">Marathi</option>
-        <option value="guj">Gujarati</option>
-        <option value="ben">Bengali</option>
-        <option value="pan">Punjabi</option>
-        <option value="ory">Odia</option>
-        <option value="asm">Assamese</option>
-      </select>
-      <div class="hint" style="margin-top: 10px;">Named characters are automatically extracted and saved - find them under "Browse &amp; Continue" afterward.</div>
-      <div class="checkbox-row">
-        <input type="checkbox" id="dreamVisual">
-        <label for="dreamVisual">Also generate a cover image (via OpenAI's image API - slower, ~30-60s extra)</label>
-      </div>
-      <div class="checkbox-row">
-        <input type="checkbox" id="dreamVideo">
-        <label for="dreamVideo">Also compose a downloadable video (cover image + narration, via ffmpeg - implies the cover image above; a static image held for the audio, not AI-generated moving video)</label>
-      </div>
-      <button id="dreamBtn">Generate story</button>
-      <div id="dreamStatus" class="status"></div>
-      <div id="dreamOutput" class="story-output"><div class="story-label">Generated story</div><div id="dreamOutputText"></div></div>
-      <img id="dreamImage" style="display:none; width:100%; border-radius:8px; margin-top:10px;">
-      <audio id="dreamPlayer" controls></audio>
-      <video id="dreamVideoPlayer" controls style="display:none; width:100%; border-radius:8px; margin-top:10px;"></video>
-      <div id="dreamMeta" class="meta"></div>
-    </div>
-
-    <div id="villainSub" class="subpane">
-      <label for="villainFears">Listener's fears / anxieties / motivations</label>
-      <textarea id="villainFears" placeholder="Being trapped in small enclosed spaces, losing control over decisions...">being trapped in small enclosed spaces with no way out, and losing control over one's own decisions</textarea>
-      <label for="villainLang">Language</label>
-      <select id="villainLang">
-        <option value="hin">Hindi</option>
-        <option value="tam">Tamil</option>
-        <option value="tel">Telugu</option>
-        <option value="mal">Malayalam</option>
-        <option value="kan">Kannada</option>
-        <option value="mar">Marathi</option>
-        <option value="guj">Gujarati</option>
-        <option value="ben">Bengali</option>
-        <option value="pan">Punjabi</option>
-        <option value="ory">Odia</option>
-        <option value="asm">Assamese</option>
-      </select>
-      <div class="hint" style="margin-top: 10px;">Built from what you describe here, not learned from listening history - no such history is tracked.</div>
-      <button id="villainBtn">Generate villain</button>
-      <div id="villainStatus" class="status"></div>
-      <div id="villainOutput" class="story-output"><div class="story-label" id="villainNameLabel">Villain</div><div id="villainOutputText"></div></div>
-      <audio id="villainPlayer" controls></audio>
-      <div id="villainMeta" class="meta"></div>
-    </div>
-
-    <div id="browseSub" class="subpane">
-      <div class="row2" style="justify-content: space-between; margin-bottom: 4px;">
-        <label style="margin:0;">Saved stories</label>
-        <button id="refreshStoriesBtn" class="svc-refresh" style="margin:0;">Refresh</button>
-      </div>
-      <div id="storyList"></div>
-
-      <label style="margin-top: 24px;">Saved characters</label>
-      <div id="characterList"></div>
-    </div>
-  </div>
-
-  <details>
-    <summary>API key</summary>
-    <div class="apikey-row">
-      <input type="password" id="apiKey" placeholder="x-api-key">
-      <div class="hint">Stored only in this browser's local storage, sent as the x-api-key header.</div>
-    </div>
-  </details>
-
-  <details id="advancedDetails">
-    <summary>Advanced: live system configuration</summary>
-    <div class="hint" style="margin-top: 8px;">Read directly from the running service via GET /config - every tunable that actually shapes behavior (chunk sizes, BGM/SFX levels and duck amounts, all 7 voice profiles, emotion presets, which languages have cultural grounding). Secrets are reported as set/unset only, never as values.</div>
-    <button id="loadConfigBtn" class="list-btn-secondary" style="margin-top: 10px; width: auto; padding: 8px 14px;">Load config</button>
-    <div id="configStatus" class="status"></div>
-    <div id="configOutput"></div>
-  </details>
-</div>
-
-<div class="svc-card">
-  <div class="svc-head">
-    <h2>Services</h2>
-    <button id="refreshBtn" class="svc-refresh">Refresh</button>
-  </div>
-  <div id="svcList" class="svc-list"></div>
-</div>
-</div>
-
-<script>
-const SERVICES = [
-  { name: "Indic Fast TTS", port: 8604, path: "/health", format: (d) => `${d.languages_loaded?.length ?? "?"} languages · ${d.cpu_threads} threads` },
-  { name: "IndicF5", port: 8600, path: "/health", format: (d) => `model loaded: ${d.model_loaded} · ${d.cpu_count} cores` },
-  { name: "IndicXlit", port: 8602, path: "/health", format: () => "transliteration service" },
-  { name: "Whisper STT", port: 8603, path: "/health", format: (d) => `model loaded: ${d.model_loaded}` },
+const LANGUAGES = [
+  ["hin", "Hindi"], ["tam", "Tamil"], ["tel", "Telugu"], ["mal", "Malayalam"],
+  ["kan", "Kannada"], ["mar", "Marathi"], ["guj", "Gujarati"], ["ben", "Bengali"],
+  ["pan", "Punjabi"], ["ory", "Odia"], ["asm", "Assamese"],
 ];
 
-async function checkService(svc, rowEl) {
-  const dot = rowEl.querySelector(".dot");
-  const detail = rowEl.querySelector(".svc-detail");
-  const time = rowEl.querySelector(".svc-time");
-  dot.className = "dot pending";
-  const t0 = performance.now();
-  try {
-    const resp = await fetch(`http://178.104.214.191:${svc.port}${svc.path}`, { signal: AbortSignal.timeout(8000) });
-    const elapsed = Math.round(performance.now() - t0);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    dot.className = "dot up";
-    detail.textContent = svc.format(data);
-    time.textContent = `${elapsed}ms`;
-  } catch (err) {
-    const elapsed = Math.round(performance.now() - t0);
-    dot.className = "dot down";
-    detail.textContent = err.name === "TimeoutError" ? "timed out" : "unreachable";
-    time.textContent = `${elapsed}ms`;
-  }
+const EMOTIONS = ["auto", "neutral", "happy", "sad", "excited", "calm", "horror", "romance", "action", "comedy", "devotional", "mystery"];
+
+function useApiKey() {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("infinity_studio_api_key") || DEFAULT_API_KEY);
+  useEffect(() => { localStorage.setItem("infinity_studio_api_key", apiKey); }, [apiKey]);
+  return [apiKey, setApiKey];
 }
 
-function renderServices() {
-  const list = document.getElementById("svcList");
-  list.innerHTML = "";
-  for (const svc of SERVICES) {
-    const row = document.createElement("div");
-    row.className = "svc-row";
-    row.innerHTML = `
-      <span class="dot pending"></span>
-      <span class="svc-name">${svc.name}</span>
-      <span class="svc-port">:${svc.port}</span>
-      <span class="svc-detail">checking...</span>
-      <span class="svc-time"></span>
-    `;
-    list.appendChild(row);
-    checkService(svc, row);
-  }
+function authHeaders(apiKey) {
+  return apiKey ? { "x-api-key": apiKey } : {};
 }
 
-document.getElementById("refreshBtn").addEventListener("click", renderServices);
-renderServices();
-</script>
+function b64ToUtf8(b64) {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
 
-<script>
-const API_BASE = "http://178.104.214.191:8604";
-const $ = (id) => document.getElementById(id);
+async function readError(resp) {
+  let detail = resp.statusText;
+  try { detail = (await resp.json()).detail || detail; } catch (e) {}
+  return `${resp.status}: ${detail}`;
+}
 
-$("speed").addEventListener("input", () => {
-  $("speedVal").textContent = parseFloat($("speed").value).toFixed(2) + "x";
-});
+function qualityBadge(headers) {
+  const scored = headers.get("X-Quality-Scored") === "true";
+  if (!scored) return null;
+  const overall = parseInt(headers.get("X-Quality-Overall") || "0", 10);
+  const rewritten = headers.get("X-Quality-Rewritten") === "true";
+  let cls = "good";
+  if (overall < 50) cls = "bad"; else if (overall < 65) cls = "warn";
+  return (
+    <span className={`badge ${cls}`}>
+      ✦ Quality {overall}/100{rewritten ? " · auto-rewritten" : ""}
+    </span>
+  );
+}
 
-const savedKey = localStorage.getItem("indic_tts_api_key");
-if (savedKey) $("apiKey").value = savedKey;
+function Field({ label: labelText, children, hint }) {
+  return (
+    <div>
+      <label>{labelText}</label>
+      {children}
+      {hint && <div className="hint">{hint}</div>}
+    </div>
+  );
+}
 
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-    document.querySelectorAll(".pane").forEach((p) => p.classList.remove("active"));
-    tab.classList.add("active");
-    $(tab.dataset.pane).classList.add("active");
-  });
-});
+function LangSelect({ value, onChange }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+    </select>
+  );
+}
 
-document.querySelectorAll(".subtab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    const group = tab.closest(".pane");
-    group.querySelectorAll(".subtab").forEach((t) => t.classList.remove("active"));
-    group.querySelectorAll(".subpane").forEach((p) => p.classList.remove("active"));
-    tab.classList.add("active");
-    $(tab.dataset.subpane).classList.add("active");
-  });
-});
+/* ---------------- Narrate ---------------- */
+const EMOTION_INFO = {
+  auto: { label: "Auto-detect", desc: "AI reads your text and picks the mood automatically." },
+  neutral: { label: "Neutral", desc: "Calm, balanced pacing, no strong mood." },
+  happy: { label: "Happy", desc: "Bright, upbeat chords with a playful bounce." },
+  sad: { label: "Sad", desc: "Slow, minor-toned and wistful." },
+  excited: { label: "Excited", desc: "Fast, energetic, rising energy." },
+  calm: { label: "Calm", desc: "Soft, sparse and meditative." },
+  horror: { label: "Horror", desc: "Dissonant, tense chords with an unsettling edge." },
+  romance: { label: "Romance", desc: "Warm, lush major-seventh chords." },
+  action: { label: "Action", desc: "Fast, driving rhythm with urgency." },
+  comedy: { label: "Comedy", desc: "Light, bouncy and playful." },
+  devotional: { label: "Devotional", desc: "Sparse sustained drone, meditative." },
+  mystery: { label: "Mystery", desc: "Slow-building tension with an uneasy edge." },
+};
 
+function GeneratingAnimation({ bgm, images }) {
+  const messages = ["Synthesizing speech…", "Shaping pronunciation…"];
+  if (bgm) messages.push("Mixing background music…");
+  if (images) messages.push("Painting the scene…");
+  messages.push("Almost there…");
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setIdx((i) => (i + 1) % messages.length), 1400);
+    return () => clearInterval(id);
+  }, [messages.length]);
+  return (
+    <div className="gen-anim">
+      <div className="gen-orb"></div>
+      <div className="gen-bar-track"><div className="gen-bar-fill"></div></div>
+      <div className="gen-status">{messages[idx]}</div>
+    </div>
+  );
+}
+
+function NarratePanel({ apiKey }) {
+  const [text, setText] = useState("நமஸ்தே, இன்று வானிலை மிகவும் அழகாக உள்ளது.");
+  const [language, setLanguage] = useState("");
+  const [emotion, setEmotion] = useState("");
+  const [speed, setSpeed] = useState(1.0);
+  const [bgm, setBgm] = useState(false);
+  const [withImages, setWithImages] = useState(false);
+  const [maxImages, setMaxImages] = useState(4);
+  const [step, setStep] = useState("compose"); // compose | preview | generating | result
+  const [status, setStatus] = useState({ text: "", cls: "" });
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [meta, setMeta] = useState("");
+  const [resolvedEmotion, setResolvedEmotion] = useState(null);
+  const [images, setImages] = useState([]);
+  const [currentImage, setCurrentImage] = useState(null);
+  const audioRef = useRef(null);
+
+  const onTimeUpdate = () => {
+    const t = audioRef.current ? audioRef.current.currentTime : 0;
+    const scene = images.find((s) => t >= s.start_time_s && t < s.end_time_s) || images[images.length - 1];
+    if (scene) setCurrentImage(scene.url);
+  };
+
+  const goToPreview = () => {
+    if (!text.trim()) { setStatus({ text: "Enter some text first.", cls: "error" }); return; }
+    setStatus({ text: "", cls: "" });
+    setStep("preview");
+  };
+
+  const generate = async () => {
+    setStep("generating");
+    setImages([]); setCurrentImage(null);
+    const t0 = performance.now();
+    try {
+      const body = { text, speed: parseFloat(speed), bgm, images: withImages, max_images: parseInt(maxImages, 10) || 4 };
+      if (language) body.language = language;
+      if (emotion) body.emotion = emotion;
+      const resp = await fetch(API_BASE + "/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error(await readError(resp));
+
+      const resolvedEm = resp.headers.get("X-Resolved-Emotion");
+      const storyId = resp.headers.get("X-Story-Id");
+      const imageCount = parseInt(resp.headers.get("X-Image-Count") || "0", 10);
+      setResolvedEmotion(resolvedEm && resolvedEm !== "none" ? resolvedEm : null);
+
+      const blob = await resp.blob();
+      setAudioUrl(URL.createObjectURL(blob));
+      setMeta(`${Math.round(performance.now() - t0)}ms · ${(blob.size / 1024).toFixed(1)} KB`);
+
+      if (imageCount > 0 && storyId) {
+        try {
+          const imgResp = await fetch(`${API_BASE}/stories/${storyId}/images`, { headers: authHeaders(apiKey) });
+          const imgData = await imgResp.json();
+          setImages(imgData.images || []);
+          if ((imgData.images || []).length) setCurrentImage(imgData.images[0].url);
+        } catch (e) { /* images are an enhancement - narration still works without them */ }
+      }
+
+      setStatus({ text: "Done.", cls: "ok" });
+      setStep("result");
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+      setStep("preview");
+    }
+  };
+
+  const startOver = () => {
+    setStep("compose");
+    setAudioUrl(null); setImages([]); setCurrentImage(null); setStatus({ text: "", cls: "" });
+  };
+
+  const emotionInfo = EMOTION_INFO[emotion] || EMOTION_INFO.neutral;
+  const selectedLangName = LANGUAGES.find(([code]) => code === language)?.[1];
+
+  return (
+    <div className="card">
+      <h3>Text to speech</h3>
+
+      {step === "compose" && (
+        <React.Fragment>
+          <Field label="Text">
+            <textarea value={text} onChange={(e) => setText(e.target.value)}
+              placeholder="Type text in any supported language, or mix in English words..." />
+          </Field>
+          <div className="row">
+            <Field label="Language">
+              <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                <option value="">Auto-detect</option>
+                {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+              </select>
+            </Field>
+            <Field label="Emotion / genre">
+              <select value={emotion} onChange={(e) => setEmotion(e.target.value)}>
+                <option value="">None</option>
+                {EMOTIONS.map((e) => <option key={e} value={e}>{EMOTION_INFO[e]?.label || e}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label={`Speed: ${parseFloat(speed).toFixed(2)}x`}>
+            <input type="range" min="0.5" max="2.0" step="0.05" value={speed} onChange={(e) => setSpeed(e.target.value)} />
+          </Field>
+          <div className="checkbox-row">
+            <input type="checkbox" id="narrate-bgm" checked={bgm} onChange={(e) => setBgm(e.target.checked)} />
+            <label htmlFor="narrate-bgm">Add background ambience (mood-matched, procedurally generated)</label>
+          </div>
+          <div className="checkbox-row">
+            <input type="checkbox" id="narrate-images" checked={withImages} onChange={(e) => setWithImages(e.target.checked)} />
+            <label htmlFor="narrate-images">Generate scene illustrations (OpenAI Images - adds latency/cost)</label>
+          </div>
+          {withImages && (
+            <Field label="Max scene images">
+              <input type="number" min="1" max="6" value={maxImages} onChange={(e) => setMaxImages(e.target.value)} />
+            </Field>
+          )}
+          <button className="btn" onClick={goToPreview}>Review before generating</button>
+          <div className={`status ${status.cls}`}>{status.text}</div>
+        </React.Fragment>
+      )}
+
+      {step === "preview" && (
+        <React.Fragment>
+          <div className="usp-banner">
+            <div className="t">Review before generating</div>
+            <p>Here's what will actually happen to your text - confirm, or go back and change something.</p>
+          </div>
+          <div className="preview-list">
+            <div className="preview-row">
+              <div>
+                <div className="pr-label">Language</div>
+                <div className="pr-desc">{language ? "Fixed by you" : "Detected from your text's script"}</div>
+              </div>
+              <div className="pr-value">{selectedLangName || "Auto-detect"}</div>
+            </div>
+            <div className="preview-row">
+              <div>
+                <div className="pr-label">Mood / music</div>
+                <div className="pr-desc">{emotionInfo.desc}</div>
+              </div>
+              <div className="pr-value">{emotion ? emotionInfo.label : "None"}</div>
+            </div>
+            <div className="preview-row">
+              <div>
+                <div className="pr-label">Background ambience</div>
+                <div className="pr-desc">{bgm ? "Procedurally generated, auto-ducked under your voice" : "Off"}</div>
+              </div>
+              <div className="pr-value">{bgm ? "On" : "Off"}</div>
+            </div>
+            <div className="preview-row">
+              <div>
+                <div className="pr-label">Scene illustrations</div>
+                <div className="pr-desc">{withImages ? `Up to ${maxImages} AI image(s), synced to playback` : "Off"}</div>
+              </div>
+              <div className="pr-value">{withImages ? "On" : "Off"}</div>
+            </div>
+            <div className="preview-row">
+              <div><div className="pr-label">Speed</div></div>
+              <div className="pr-value">{parseFloat(speed).toFixed(2)}x</div>
+            </div>
+          </div>
+          <div className="story-output" style={{ display: "block" }}>
+            <div className="label">Your text</div>
+            {text.length > 300 ? text.slice(0, 300) + "…" : text}
+          </div>
+          <div className="row" style={{ marginTop: 4 }}>
+            <button className="btn ghost" onClick={() => setStep("compose")}>Back to edit</button>
+            <button className="btn" onClick={generate}>Confirm &amp; generate</button>
+          </div>
+        </React.Fragment>
+      )}
+
+      {step === "generating" && <GeneratingAnimation bgm={bgm} images={withImages} />}
+
+      {step === "result" && (
+        <React.Fragment>
+          <div className={`status ${status.cls}`}>{status.text}</div>
+          {resolvedEmotion && <span className="badge neutral">✦ AI detected mood: {resolvedEmotion}</span>}
+          {currentImage && <img className="scene-image" src={API_BASE + currentImage} alt="Scene illustration" />}
+          {audioUrl && <audio ref={audioRef} controls autoPlay src={audioUrl} onTimeUpdate={onTimeUpdate} />}
+          {meta && <div className="meta">{meta}</div>}
+          <button className="btn ghost" onClick={startOver} style={{ marginTop: 14 }}>Start over</button>
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Clone ---------------- */
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -419,566 +586,965 @@ function fileToBase64(file) {
   });
 }
 
-function b64ToUtf8(b64) {
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  return new TextDecoder("utf-8").decode(bytes);
-}
+function ClonePanel({ apiKey }) {
+  const [file, setFile] = useState(null);
+  const [refText, setRefText] = useState("");
+  const [cloneText, setCloneText] = useState("");
+  const [status, setStatus] = useState({ text: "", cls: "" });
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [meta, setMeta] = useState("");
+  const [busy, setBusy] = useState(false);
 
-function authHeaders() {
-  const apiKey = $("apiKey").value.trim();
-  return apiKey ? { "x-api-key": apiKey } : {};
-}
-
-$("genBtn").addEventListener("click", async () => {
-  const text = $("text").value.trim();
-  const statusEl = $("status");
-  const player = $("player");
-  const meta = $("meta");
-  statusEl.className = "status";
-  statusEl.textContent = "";
-  meta.style.display = "none";
-  player.style.display = "none";
-
-  if (!text) {
-    statusEl.className = "status error";
-    statusEl.textContent = "Enter some text first.";
-    return;
-  }
-
-  const apiKey = $("apiKey").value.trim();
-  localStorage.setItem("indic_tts_api_key", apiKey);
-
-  const body = {
-    text,
-    speed: parseFloat($("speed").value),
-    bgm: $("bgm").checked,
+  const submit = async () => {
+    if (!file || !refText.trim() || !cloneText.trim()) {
+      setStatus({ text: "Reference audio, reference transcript, and target text are all required.", cls: "error" });
+      return;
+    }
+    setBusy(true); setStatus({ text: "Cloning (30-70s, this is expected)...", cls: "" });
+    const t0 = performance.now();
+    try {
+      const refAudioB64 = await fileToBase64(file);
+      const resp = await fetch(API_BASE + "/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify({ text: cloneText, ref_audio_b64: refAudioB64, ref_text: refText }),
+      });
+      if (!resp.ok) throw new Error(await readError(resp));
+      const blob = await resp.blob();
+      setAudioUrl(URL.createObjectURL(blob));
+      setMeta(`${((performance.now() - t0) / 1000).toFixed(1)}s · ${(blob.size / 1024).toFixed(1)} KB`);
+      setStatus({ text: "Done.", cls: "ok" });
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
   };
-  if ($("language").value) body.language = $("language").value;
-  if ($("emotion").value) body.emotion = $("emotion").value;
 
-  $("genBtn").disabled = true;
-  statusEl.textContent = "Generating...";
-  const t0 = performance.now();
-
-  try {
-    const resp = await fetch(API_BASE + "/tts", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!resp.ok) {
-      let detail = resp.statusText;
-      try { detail = (await resp.json()).detail || detail; } catch (e) {}
-      throw new Error(`${resp.status}: ${detail}`);
-    }
-
-    const blob = await resp.blob();
-    const elapsedMs = Math.round(performance.now() - t0);
-    const url = URL.createObjectURL(blob);
-    player.src = url;
-    player.style.display = "block";
-    player.play().catch(() => {});
-
-    statusEl.className = "status ok";
-    statusEl.textContent = "Done.";
-    meta.style.display = "block";
-    meta.textContent = `Request time: ${elapsedMs}ms · ${(blob.size / 1024).toFixed(1)} KB`;
-  } catch (err) {
-    statusEl.className = "status error";
-    statusEl.textContent = err.message || String(err);
-  } finally {
-    $("genBtn").disabled = false;
-  }
-});
-
-$("cloneBtn").addEventListener("click", async () => {
-  const statusEl = $("cloneStatus");
-  const player = $("clonePlayer");
-  const meta = $("cloneMeta");
-  statusEl.className = "status";
-  statusEl.textContent = "";
-  meta.style.display = "none";
-  player.style.display = "none";
-
-  const file = $("refAudio").files[0];
-  const refText = $("refText").value.trim();
-  const cloneText = $("cloneText").value.trim();
-
-  if (!file || !refText || !cloneText) {
-    statusEl.className = "status error";
-    statusEl.textContent = "Reference audio, reference transcript, and target text are all required.";
-    return;
-  }
-
-  const apiKey = $("apiKey").value.trim();
-  localStorage.setItem("indic_tts_api_key", apiKey);
-
-  $("cloneBtn").disabled = true;
-  statusEl.textContent = "Cloning (30-70s, this is expected)...";
-  const t0 = performance.now();
-
-  try {
-    const refAudioB64 = await fileToBase64(file);
-    const resp = await fetch(API_BASE + "/clone", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
-      },
-      body: JSON.stringify({ text: cloneText, ref_audio_b64: refAudioB64, ref_text: refText }),
-    });
-
-    if (!resp.ok) {
-      let detail = resp.statusText;
-      try { detail = (await resp.json()).detail || detail; } catch (e) {}
-      throw new Error(`${resp.status}: ${detail}`);
-    }
-
-    const blob = await resp.blob();
-    const elapsedMs = Math.round(performance.now() - t0);
-    const url = URL.createObjectURL(blob);
-    player.src = url;
-    player.style.display = "block";
-    player.play().catch(() => {});
-
-    statusEl.className = "status ok";
-    statusEl.textContent = "Done.";
-    meta.style.display = "block";
-    meta.textContent = `Request time: ${(elapsedMs / 1000).toFixed(1)}s · ${(blob.size / 1024).toFixed(1)} KB`;
-  } catch (err) {
-    statusEl.className = "status error";
-    statusEl.textContent = err.message || String(err);
-  } finally {
-    $("cloneBtn").disabled = false;
-  }
-});
-
-$("dreamBtn").addEventListener("click", async () => {
-  const description = $("dreamDesc").value.trim();
-  const statusEl = $("dreamStatus");
-  const output = $("dreamOutput");
-  const player = $("dreamPlayer");
-  const meta = $("dreamMeta");
-  const imageEl = $("dreamImage");
-  const videoEl = $("dreamVideoPlayer");
-  const wantsVisual = $("dreamVisual").checked;
-  const wantsVideo = $("dreamVideo").checked;
-  statusEl.className = "status";
-  statusEl.textContent = "";
-  output.style.display = "none";
-  player.style.display = "none";
-  meta.style.display = "none";
-  imageEl.style.display = "none";
-  videoEl.style.display = "none";
-  videoEl.src = "";
-
-  if (!description) {
-    statusEl.className = "status error";
-    statusEl.textContent = "Describe a dream, memory, or scene first.";
-    return;
-  }
-
-  localStorage.setItem("indic_tts_api_key", $("apiKey").value.trim());
-  $("dreamBtn").disabled = true;
-  statusEl.textContent = wantsVideo
-    ? "Writing, narrating, painting a cover image, and composing a video (can take 30-90s)..."
-    : wantsVisual
-    ? "Writing, narrating, and painting a cover image (the image alone can take 30-60s)..."
-    : "Writing and narrating (this calls OpenAI, then synthesizes)...";
-  const t0 = performance.now();
-
-  try {
-    const resp = await fetch(API_BASE + "/dream-to-story", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ description, language: $("dreamLang").value, visual: wantsVisual, video: wantsVideo }),
-    });
-    if (!resp.ok) {
-      let detail = resp.statusText;
-      try { detail = (await resp.json()).detail || detail; } catch (e) {}
-      throw new Error(`${resp.status}: ${detail}`);
-    }
-
-    const storyB64 = resp.headers.get("X-Story-Text-B64");
-    const storyId = resp.headers.get("X-Story-Id");
-    const charIds = resp.headers.get("X-Character-Ids");
-    const hasImage = resp.headers.get("X-Has-Image") === "true";
-    const imageErrorB64 = resp.headers.get("X-Image-Error-B64");
-    const videoAvailable = resp.headers.get("X-Video-Available") === "true";
-    const blob = await resp.blob();
-    const elapsedMs = Math.round(performance.now() - t0);
-
-    if (storyB64) {
-      $("dreamOutputText").textContent = b64ToUtf8(storyB64);
-      output.style.display = "block";
-    }
-
-    if (videoAvailable && storyId) {
-      // Video already carries the same narration as its audio track -
-      // show the video player (auto-play) and skip the separate audio
-      // player so the narration doesn't play twice at once.
-      videoEl.src = `${API_BASE}/stories/${storyId}/video`;
-      videoEl.style.display = "block";
-      videoEl.play().catch(() => {});
-    } else {
-      player.src = URL.createObjectURL(blob);
-      player.style.display = "block";
-      player.play().catch(() => {});
-    }
-
-    if (hasImage && storyId) {
-      imageEl.src = `${API_BASE}/stories/${storyId}/image`;
-      imageEl.style.display = videoAvailable ? "none" : "block"; // video already shows the cover frame
-    }
-
-    statusEl.className = "status ok";
-    statusEl.textContent = "Done.";
-    meta.style.display = "block";
-    const charNote = charIds ? ` · characters saved: ${charIds}` : " · no named characters found";
-    let imageNote = "";
-    if (wantsVisual || wantsVideo) {
-      imageNote = hasImage ? " · image generated" : ` · image failed: ${imageErrorB64 ? b64ToUtf8(imageErrorB64) : "unknown error"}`;
-    }
-    let videoNote = "";
-    if (wantsVideo) {
-      videoNote = videoAvailable ? " · video composed" : " · video unavailable (image generation failed)";
-    }
-    meta.textContent = `Story #${storyId} · ${(elapsedMs / 1000).toFixed(1)}s${charNote}${imageNote}${videoNote}`;
-  } catch (err) {
-    statusEl.className = "status error";
-    statusEl.textContent = err.message || String(err);
-  } finally {
-    $("dreamBtn").disabled = false;
-  }
-});
-
-$("villainBtn").addEventListener("click", async () => {
-  const fears = $("villainFears").value.trim();
-  const statusEl = $("villainStatus");
-  const output = $("villainOutput");
-  const player = $("villainPlayer");
-  const meta = $("villainMeta");
-  statusEl.className = "status";
-  statusEl.textContent = "";
-  output.style.display = "none";
-  player.style.display = "none";
-  meta.style.display = "none";
-
-  if (!fears) {
-    statusEl.className = "status error";
-    statusEl.textContent = "Describe the listener's fears first.";
-    return;
-  }
-
-  localStorage.setItem("indic_tts_api_key", $("apiKey").value.trim());
-  $("villainBtn").disabled = true;
-  statusEl.textContent = "Designing villain and narrating...";
-  const t0 = performance.now();
-
-  try {
-    const resp = await fetch(API_BASE + "/villain", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ fears, language: $("villainLang").value }),
-    });
-    if (!resp.ok) {
-      let detail = resp.statusText;
-      try { detail = (await resp.json()).detail || detail; } catch (e) {}
-      throw new Error(`${resp.status}: ${detail}`);
-    }
-
-    const storyB64 = resp.headers.get("X-Story-Text-B64");
-    const nameB64 = resp.headers.get("X-Villain-Name-B64");
-    const storyId = resp.headers.get("X-Story-Id");
-    const blob = await resp.blob();
-    const elapsedMs = Math.round(performance.now() - t0);
-
-    if (nameB64) $("villainNameLabel").textContent = b64ToUtf8(nameB64);
-    if (storyB64) {
-      $("villainOutputText").textContent = b64ToUtf8(storyB64);
-      output.style.display = "block";
-    }
-    player.src = URL.createObjectURL(blob);
-    player.style.display = "block";
-    player.play().catch(() => {});
-
-    statusEl.className = "status ok";
-    statusEl.textContent = "Done.";
-    meta.style.display = "block";
-    meta.textContent = `Story #${storyId} · ${(elapsedMs / 1000).toFixed(1)}s`;
-  } catch (err) {
-    statusEl.className = "status error";
-    statusEl.textContent = err.message || String(err);
-  } finally {
-    $("villainBtn").disabled = false;
-  }
-});
-
-async function playAudioResponse(resp, statusEl) {
-  const storyB64 = resp.headers.get("X-Story-Text-B64");
-  const blob = await resp.blob();
-  const url = URL.createObjectURL(blob);
-  const audioEl = document.createElement("audio");
-  audioEl.controls = true;
-  audioEl.src = url;
-  audioEl.style.width = "100%";
-  audioEl.style.marginTop = "8px";
-  statusEl.after(audioEl);
-  audioEl.play().catch(() => {});
-  if (storyB64) {
-    const textDiv = document.createElement("div");
-    textDiv.className = "story-output";
-    textDiv.style.display = "block";
-    textDiv.textContent = b64ToUtf8(storyB64);
-    audioEl.after(textDiv);
-  }
+  return (
+    <div className="card">
+      <h3>Clone a voice</h3>
+      <Field label="Reference voice (short audio clip)" hint="A few seconds of clear speech works best.">
+        <input type="file" accept="audio/*" onChange={(e) => setFile(e.target.files[0] || null)} />
+      </Field>
+      <Field label="Reference transcript">
+        <textarea value={refText} onChange={(e) => setRefText(e.target.value)}
+          placeholder="Exact text spoken in the reference clip above..." />
+      </Field>
+      <Field label="Text to speak in the cloned voice">
+        <textarea value={cloneText} onChange={(e) => setCloneText(e.target.value)}
+          placeholder="What should the cloned voice say?" />
+      </Field>
+      <div className="hint">Proxies to a separate reference-audio-conditioned service and takes 30-70s - that's inherent to the model, not a bug. This is a per-request clone, not a saved Voice Bank entry (see the pitch's Cost section for that roadmap item).</div>
+      <button className="btn" onClick={submit} disabled={busy}>{busy ? "Cloning…" : "Clone voice"}</button>
+      <div className={`status ${status.cls}`}>{status.text}</div>
+      {audioUrl && <audio controls autoPlay src={audioUrl} />}
+      {meta && <div className="meta">{meta}</div>}
+    </div>
+  );
 }
 
-async function loadStories() {
-  const listEl = $("storyList");
-  listEl.innerHTML = '<div class="list-empty">Loading...</div>';
-  try {
-    const resp = await fetch(API_BASE + "/stories", { headers: authHeaders() });
-    const data = await resp.json();
-    if (!data.stories || data.stories.length === 0) {
-      listEl.innerHTML = '<div class="list-empty">No stories yet - generate one under "Dream to Story".</div>';
-      return;
+/* ---------------- Dream to Story ---------------- */
+function DreamPanel({ apiKey, onStorySaved }) {
+  const [description, setDescription] = useState("A detective named Vikram investigates a locked-room murder in an old mansion, helped by his sharp-witted assistant Priya.");
+  const [language, setLanguage] = useState("hin");
+  const [withImages, setWithImages] = useState(false);
+  const [maxImages, setMaxImages] = useState(4);
+  const [withVisual, setWithVisual] = useState(false);
+  const [withVideo, setWithVideo] = useState(false);
+  const [status, setStatus] = useState({ text: "", cls: "" });
+  const [storyText, setStoryText] = useState("");
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [meta, setMeta] = useState("");
+  const [qualityHeaders, setQualityHeaders] = useState(null);
+  const [images, setImages] = useState([]);
+  const [currentImage, setCurrentImage] = useState(null);
+  const [coverImageId, setCoverImageId] = useState(null);
+  const [videoAvailable, setVideoAvailable] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const audioRef = useRef(null);
+
+  const onTimeUpdate = () => {
+    const t = audioRef.current ? audioRef.current.currentTime : 0;
+    const scene = images.find((s) => t >= s.start_time_s && t < s.end_time_s) || images[images.length - 1];
+    if (scene) setCurrentImage(scene.url);
+  };
+
+  const downloadCoverVideo = async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/stories/${coverImageId}/video`, { headers: authHeaders(apiKey) });
+      if (!resp.ok) throw new Error(await readError(resp));
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `story-${coverImageId}.mp4`; a.click();
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
     }
-    listEl.innerHTML = "";
-    for (const story of data.stories) {
-      const row = document.createElement("div");
-      row.className = "list-row";
-      const branchNote = story.parent_story_id ? ` · branched from #${story.parent_story_id}` : "";
-      const thumb = story.has_image ? `<img class="list-thumb" src="${API_BASE}/stories/${story.id}/image" alt="">` : "";
-      row.innerHTML = `
-        ${thumb}
-        <div class="list-main">
-          <div class="list-title">#${story.id}: ${story.title || "(untitled)"}</div>
-          <div class="list-sub">${story.language}${branchNote}</div>
-        </div>
-        <div class="list-actions">
-          <button class="list-btn-secondary" data-action="text">Text</button>
-          ${story.has_image ? '<button class="list-btn-secondary" data-action="image">Image</button>' : ""}
-          ${story.has_audio ? '<button class="list-btn-secondary" data-action="video">Video</button>' : ""}
-          <button data-action="branch">Branch</button>
-        </div>
-      `;
-      const textDiv = document.createElement("div");
-      textDiv.className = "expand-text";
-      const mediaDiv = document.createElement("div");
-      mediaDiv.className = "expand-media";
-      row.querySelector('[data-action="text"]').addEventListener("click", async () => {
-        if (textDiv.style.display === "block") { textDiv.style.display = "none"; return; }
-        mediaDiv.style.display = "none";
-        if (!textDiv.dataset.loaded) {
-          textDiv.textContent = "Loading...";
-          textDiv.style.display = "block";
-          try {
-            const r = await fetch(`${API_BASE}/stories/${story.id}`, { headers: authHeaders() });
-            const d = await r.json();
-            textDiv.textContent = d.text || "(no text)";
-            textDiv.dataset.loaded = "1";
-          } catch (err) {
-            textDiv.textContent = `Failed to load: ${err.message || err}`;
-          }
-        } else {
-          textDiv.style.display = "block";
-        }
+  };
+
+  const submit = async () => {
+    if (!description.trim()) { setStatus({ text: "Describe a dream, memory, or scene first.", cls: "error" }); return; }
+    setBusy(true); setStatus({ text: "Writing and narrating (calls OpenAI, then synthesizes)...", cls: "" });
+    setImages([]); setCurrentImage(null); setCoverImageId(null); setVideoAvailable(false);
+    const t0 = performance.now();
+    try {
+      const resp = await fetch(API_BASE + "/dream-to-story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify({
+          description, language, images: withImages, max_images: parseInt(maxImages, 10),
+          visual: withVisual || withVideo, video: withVideo,
+        }),
       });
-      const imageBtn = row.querySelector('[data-action="image"]');
-      if (imageBtn) {
-        imageBtn.addEventListener("click", () => {
-          const isShowing = mediaDiv.style.display === "block" && mediaDiv.dataset.kind === "image";
-          if (isShowing) { mediaDiv.style.display = "none"; return; }
-          textDiv.style.display = "none";
-          mediaDiv.innerHTML = `<img src="${API_BASE}/stories/${story.id}/image" alt="">`;
-          mediaDiv.dataset.kind = "image";
-          mediaDiv.style.display = "block";
-        });
-      }
-      const videoBtn = row.querySelector('[data-action="video"]');
-      if (videoBtn) {
-        videoBtn.addEventListener("click", () => {
-          const isShowing = mediaDiv.style.display === "block" && mediaDiv.dataset.kind === "video";
-          if (isShowing) { mediaDiv.querySelector("video")?.pause(); mediaDiv.style.display = "none"; return; }
-          textDiv.style.display = "none";
-          mediaDiv.innerHTML = `<video controls src="${API_BASE}/stories/${story.id}/video"></video>`;
-          mediaDiv.dataset.kind = "video";
-          mediaDiv.style.display = "block";
-          mediaDiv.querySelector("video").play().catch(() => {});
-        });
-      }
-      const form = document.createElement("div");
-      form.className = "inline-form";
-      form.innerHTML = `
-        <textarea placeholder="What changes at some point in this story?"></textarea>
-        <button>Generate branch</button>
-        <div class="status"></div>
-      `;
-      row.querySelector('[data-action="branch"]').addEventListener("click", () => {
-        form.style.display = form.style.display === "block" ? "none" : "block";
-      });
-      const branchTextarea = form.querySelector("textarea");
-      const branchBtn = form.querySelector("button");
-      const branchStatus = form.querySelector(".status");
-      branchBtn.addEventListener("click", async () => {
-        const changed_decision = branchTextarea.value.trim();
-        if (!changed_decision) {
-          branchStatus.className = "status error";
-          branchStatus.textContent = "Describe the changed decision.";
-          return;
-        }
-        branchBtn.disabled = true;
-        branchStatus.className = "status";
-        branchStatus.textContent = "Generating branch...";
+      if (!resp.ok) throw new Error(await readError(resp));
+
+      const storyB64 = resp.headers.get("X-Story-Text-B64");
+      const storyId = resp.headers.get("X-Story-Id");
+      const charIds = resp.headers.get("X-Character-Ids");
+      const imageCount = parseInt(resp.headers.get("X-Image-Count") || "0", 10);
+      const hasImage = resp.headers.get("X-Has-Image") === "true";
+      const videoOk = resp.headers.get("X-Video-Available") === "true";
+      setQualityHeaders(resp.headers);
+      const blob = await resp.blob();
+      setAudioUrl(URL.createObjectURL(blob));
+      if (storyB64) setStoryText(b64ToUtf8(storyB64));
+      if (hasImage && storyId) setCoverImageId(storyId);
+      if (videoOk && storyId) setVideoAvailable(true);
+
+      if (imageCount > 0 && storyId) {
         try {
-          const resp = await fetch(`${API_BASE}/stories/${story.id}/branch`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ changed_decision }),
-          });
-          if (!resp.ok) {
-            let detail = resp.statusText;
-            try { detail = (await resp.json()).detail || detail; } catch (e) {}
-            throw new Error(`${resp.status}: ${detail}`);
-          }
-          branchStatus.className = "status ok";
-          branchStatus.textContent = "Done.";
-          await playAudioResponse(resp, branchStatus);
-          loadStories();
-        } catch (err) {
-          branchStatus.className = "status error";
-          branchStatus.textContent = err.message || String(err);
-        } finally {
-          branchBtn.disabled = false;
-        }
-      });
-      listEl.appendChild(row);
-      listEl.appendChild(mediaDiv);
-      listEl.appendChild(textDiv);
-      listEl.appendChild(form);
-    }
-  } catch (err) {
-    listEl.innerHTML = `<div class="list-empty">Failed to load: ${err.message || err}</div>`;
-  }
-}
+          const imgResp = await fetch(`${API_BASE}/stories/${storyId}/images`, { headers: authHeaders(apiKey) });
+          const imgData = await imgResp.json();
+          setImages(imgData.images || []);
+          if ((imgData.images || []).length) setCurrentImage(imgData.images[0].url);
+        } catch (e) {}
+      }
 
-async function loadCharacters() {
-  const listEl = $("characterList");
-  listEl.innerHTML = '<div class="list-empty">Loading...</div>';
-  try {
-    const resp = await fetch(API_BASE + "/characters", { headers: authHeaders() });
-    const data = await resp.json();
-    if (!data.characters || data.characters.length === 0) {
-      listEl.innerHTML = '<div class="list-empty">No characters yet - named characters are auto-saved from "Dream to Story".</div>';
-      return;
-    }
-    listEl.innerHTML = "";
-    for (const character of data.characters) {
-      const row = document.createElement("div");
-      row.className = "list-row";
-      row.innerHTML = `
-        <div class="list-main">
-          <div class="list-title">${character.name}</div>
-          <div class="list-sub">${character.personality || ""}</div>
+      const charNote = charIds ? ` · characters saved: ${charIds}` : " · no named characters found";
+      const imageNote = imageCount > 0 ? ` · ${imageCount} scene image(s)` : "";
+      setMeta(`Story #${storyId} · ${((performance.now() - t0) / 1000).toFixed(1)}s${charNote}${imageNote}`);
+      setStatus({ text: "Done.", cls: "ok" });
+      if (onStorySaved) onStorySaved();
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card">
+      <div className="usp-banner">
+        <div className="t">State, not script</div>
+        <p>Describe a scene once. Named characters are auto-extracted and saved, the story is scored for cultural/emotional quality before narration, and — with illustrations on — it comes back as scenes you can watch turn as the story plays.</p>
+      </div>
+      <h3>Dream to Story</h3>
+      <Field label="Describe a dream, memory, or scene">
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
+      <div className="row">
+        <Field label="Language"><LangSelect value={language} onChange={setLanguage} /></Field>
+        <Field label="Max scene images">
+          <input type="number" min="1" max="6" value={maxImages} onChange={(e) => setMaxImages(e.target.value)} />
+        </Field>
+      </div>
+      <div className="checkbox-row">
+        <input type="checkbox" id="dream-images" checked={withImages} onChange={(e) => setWithImages(e.target.checked)} />
+        <label htmlFor="dream-images">Generate scene illustrations - a storyboard synced to playback (OpenAI Images - adds latency/cost)</label>
+      </div>
+      <div className="checkbox-row">
+        <input type="checkbox" id="dream-visual" checked={withVisual} onChange={(e) => setWithVisual(e.target.checked)} />
+        <label htmlFor="dream-visual">Generate a single cover image (the story's strongest visual moment)</label>
+      </div>
+      <div className="checkbox-row">
+        <input type="checkbox" id="dream-video" checked={withVideo} onChange={(e) => setWithVideo(e.target.checked)} />
+        <label htmlFor="dream-video">Also compose a downloadable video (cover image + full narration, via ffmpeg)</label>
+      </div>
+      <button className="btn" onClick={submit} disabled={busy}>{busy ? "Working…" : "Generate story"}</button>
+      <div className={`status ${status.cls}`}>{status.text}</div>
+      {storyText && (
+        <div className="story-output">
+          <div className="label">Generated story</div>
+          {storyText}
         </div>
-        <button data-action="revive" data-id="${character.id}">Revive</button>
-      `;
-      const form = document.createElement("div");
-      form.className = "inline-form";
-      form.innerHTML = `
-        <textarea placeholder="Describe the new setting/universe to place them in..."></textarea>
-        <button>Generate revival</button>
-        <div class="status"></div>
-      `;
-      row.querySelector("button").addEventListener("click", () => {
-        form.style.display = form.style.display === "block" ? "none" : "block";
+      )}
+      {qualityHeaders && qualityBadge(qualityHeaders)}
+      {currentImage && <img className="scene-image" src={API_BASE + currentImage} alt="Scene illustration" />}
+      {coverImageId && <img className="scene-image" src={`${API_BASE}/stories/${coverImageId}/image`} alt="Cover" />}
+      {audioUrl && <audio ref={audioRef} controls autoPlay src={audioUrl} onTimeUpdate={onTimeUpdate} />}
+      {videoAvailable && coverImageId && (
+        <button className="btn ghost small" style={{ marginTop: 10 }} onClick={downloadCoverVideo}>Download video</button>
+      )}
+      {meta && <div className="meta">{meta}</div>}
+    </div>
+  );
+}
+
+/* ---------------- Villain ---------------- */
+function VillainPanel({ apiKey, onStorySaved }) {
+  const [fears, setFears] = useState("being trapped in small enclosed spaces with no way out, and losing control over one's own decisions");
+  const [language, setLanguage] = useState("hin");
+  const [status, setStatus] = useState({ text: "", cls: "" });
+  const [villainName, setVillainName] = useState("");
+  const [sceneText, setSceneText] = useState("");
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [meta, setMeta] = useState("");
+  const [qualityHeaders, setQualityHeaders] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!fears.trim()) { setStatus({ text: "Describe the listener's fears first.", cls: "error" }); return; }
+    setBusy(true); setStatus({ text: "Designing villain and narrating...", cls: "" });
+    const t0 = performance.now();
+    try {
+      const resp = await fetch(API_BASE + "/villain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify({ fears, language }),
       });
-      const setTextarea = form.querySelector("textarea");
-      const reviveBtn = form.querySelector("button");
-      const reviveStatus = form.querySelector(".status");
-      reviveBtn.addEventListener("click", async () => {
-        const new_setting = setTextarea.value.trim();
-        if (!new_setting) {
-          reviveStatus.className = "status error";
-          reviveStatus.textContent = "Describe the new setting.";
-          return;
-        }
-        reviveBtn.disabled = true;
-        reviveStatus.className = "status";
-        reviveStatus.textContent = "Reviving character...";
-        try {
-          const resp = await fetch(`${API_BASE}/characters/${character.id}/revive`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ new_setting }),
-          });
-          if (!resp.ok) {
-            let detail = resp.statusText;
-            try { detail = (await resp.json()).detail || detail; } catch (e) {}
-            throw new Error(`${resp.status}: ${detail}`);
-          }
-          reviveStatus.className = "status ok";
-          reviveStatus.textContent = "Done.";
-          await playAudioResponse(resp, reviveStatus);
-          loadStories();
-        } catch (err) {
-          reviveStatus.className = "status error";
-          reviveStatus.textContent = err.message || String(err);
-        } finally {
-          reviveBtn.disabled = false;
-        }
+      if (!resp.ok) throw new Error(await readError(resp));
+      const storyB64 = resp.headers.get("X-Story-Text-B64");
+      const nameB64 = resp.headers.get("X-Villain-Name-B64");
+      const storyId = resp.headers.get("X-Story-Id");
+      setQualityHeaders(resp.headers);
+      const blob = await resp.blob();
+      setAudioUrl(URL.createObjectURL(blob));
+      if (nameB64) setVillainName(b64ToUtf8(nameB64));
+      if (storyB64) setSceneText(b64ToUtf8(storyB64));
+      setMeta(`Story #${storyId} · ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+      setStatus({ text: "Done.", cls: "ok" });
+      if (onStorySaved) onStorySaved();
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card">
+      <div className="usp-banner">
+        <div className="t">Personalized, not generic</div>
+        <p>Built from what you describe here, not learned from listening history - no such history is tracked.</p>
+      </div>
+      <h3>Personalized villain</h3>
+      <Field label="Listener's fears / anxieties / motivations">
+        <textarea value={fears} onChange={(e) => setFears(e.target.value)} />
+      </Field>
+      <Field label="Language"><LangSelect value={language} onChange={setLanguage} /></Field>
+      <button className="btn" onClick={submit} disabled={busy}>{busy ? "Working…" : "Generate villain"}</button>
+      <div className={`status ${status.cls}`}>{status.text}</div>
+      {sceneText && (
+        <div className="story-output">
+          <div className="label">{villainName || "Villain"}</div>
+          {sceneText}
+        </div>
+      )}
+      {qualityHeaders && qualityBadge(qualityHeaders)}
+      {audioUrl && <audio controls autoPlay src={audioUrl} />}
+      {meta && <div className="meta">{meta}</div>}
+    </div>
+  );
+}
+
+/* ---------------- Stories & Branches ---------------- */
+function ComicView({ apiKey, storyId }) {
+  const [panels, setPanels] = useState(null);
+  useEffect(() => {
+    fetch(`${API_BASE}/stories/${storyId}/comic`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then((d) => setPanels(d.panels || []));
+  }, [storyId]);
+  if (panels === null) return <div className="hint">Loading comic…</div>;
+  if (!panels.length) return <div className="hint">No scene images for this story yet - generate it with illustrations on.</div>;
+  return (
+    <div className="grid">
+      {panels.map((p, i) => (
+        <div className="comic-panel" key={i}>
+          <img src={API_BASE + p.image_url} alt={`Panel ${i + 1}`} />
+          <div className="cap">{p.caption}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GameTreeNode({ node, isRoot }) {
+  return (
+    <div className={`tree-node ${isRoot ? "root" : ""}`}>
+      <div className="tree-card">
+        <div className="tt">#{node.id} {node.title || ""}</div>
+        {node.branch_note && <div className="tn">↳ {node.branch_note}</div>}
+      </div>
+      {(node.children || []).map((c) => <GameTreeNode key={c.id} node={c} isRoot={false} />)}
+    </div>
+  );
+}
+
+function GameTreeView({ apiKey, storyId }) {
+  const [tree, setTree] = useState(null);
+  useEffect(() => {
+    fetch(`${API_BASE}/stories/${storyId}/game-tree`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then(setTree);
+  }, [storyId]);
+  if (!tree) return <div className="hint">Loading choice-tree…</div>;
+  return <GameTreeNode node={tree} isRoot={true} />;
+}
+
+function StoryRow({ apiKey, story, onChanged }) {
+  const [openPanel, setOpenPanel] = useState(null); // 'branch' | 'lang' | 'comic' | 'game' | 'cover' | null
+  const [changedDecision, setChangedDecision] = useState("");
+  const [targetLang, setTargetLang] = useState("tam");
+  const [status, setStatus] = useState({ text: "", cls: "" });
+  const [resultAudio, setResultAudio] = useState(null);
+  const [videoStatus, setVideoStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const toggle = (panel) => setOpenPanel(openPanel === panel ? null : panel);
+
+  const doBranch = async () => {
+    if (!changedDecision.trim()) { setStatus({ text: "Describe the changed decision.", cls: "error" }); return; }
+    setBusy(true); setStatus({ text: "Generating branch...", cls: "" });
+    try {
+      const resp = await fetch(`${API_BASE}/stories/${story.id}/branch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify({ changed_decision: changedDecision }),
       });
-      listEl.appendChild(row);
-      listEl.appendChild(form);
+      if (!resp.ok) throw new Error(await readError(resp));
+      const blob = await resp.blob();
+      setResultAudio(URL.createObjectURL(blob));
+      setStatus({ text: "Branch created.", cls: "ok" });
+      onChanged();
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
+  };
+
+  const doSwitchLanguage = async () => {
+    setBusy(true); setStatus({ text: "Re-rendering in the new language...", cls: "" });
+    try {
+      const resp = await fetch(`${API_BASE}/stories/${story.id}/switch-language`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify({ language: targetLang }),
+      });
+      if (!resp.ok) throw new Error(await readError(resp));
+      const blob = await resp.blob();
+      setResultAudio(URL.createObjectURL(blob));
+      setStatus({ text: `Now available in ${targetLang}.`, cls: "ok" });
+      onChanged();
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
+  };
+
+  const doRenderVideo = async () => {
+    setVideoStatus("Rendering (ffmpeg)...");
+    try {
+      const resp = await fetch(`${API_BASE}/stories/${story.id}/render/video`, {
+        method: "POST", headers: authHeaders(apiKey),
+      });
+      if (!resp.ok) throw new Error(await readError(resp));
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `story-${story.id}.mp4`; a.click();
+      setVideoStatus("Downloaded.");
+    } catch (err) {
+      setVideoStatus(err.message || String(err));
     }
-  } catch (err) {
-    listEl.innerHTML = `<div class="list-empty">Failed to load: ${err.message || err}</div>`;
-  }
+  };
+
+  const doDownloadCoverVideo = async () => {
+    setVideoStatus("Composing cover video (ffmpeg)...");
+    try {
+      const resp = await fetch(`${API_BASE}/stories/${story.id}/video`, { headers: authHeaders(apiKey) });
+      if (!resp.ok) throw new Error(await readError(resp));
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `story-${story.id}-cover.mp4`; a.click();
+      setVideoStatus("Downloaded.");
+    } catch (err) {
+      setVideoStatus(err.message || String(err));
+    }
+  };
+
+  return (
+    <div>
+      <div className="list-row">
+        {story.has_image ? (
+          <img className="thumb" src={`${API_BASE}/stories/${story.id}/image`} alt="" onClick={() => toggle("cover")} />
+        ) : null}
+        <div className="list-main">
+          <div className="list-title">#{story.id}: {story.title || "(untitled)"}</div>
+          <div className="list-sub">
+            {story.language}
+            {story.parent_story_id ? ` · branched from #${story.parent_story_id}` : ""}
+            {story.variant_of_story_id ? ` · language variant of #${story.variant_of_story_id}` : ""}
+          </div>
+        </div>
+        <div className="list-actions">
+          <button className="btn ghost small" onClick={() => toggle("branch")}>Branch</button>
+          <button className="btn ghost small" onClick={() => toggle("lang")}>Switch language</button>
+          <button className="btn ghost small" onClick={() => toggle("comic")}>Comic</button>
+          <button className="btn ghost small" onClick={() => toggle("game")}>Game tree</button>
+          <button className="btn ghost small" onClick={doRenderVideo}>Video</button>
+          {story.has_image && <button className="btn ghost small" onClick={() => toggle("cover")}>Cover</button>}
+          {story.has_image && story.has_audio && <button className="btn ghost small" onClick={doDownloadCoverVideo}>Cover video</button>}
+        </div>
+      </div>
+      {videoStatus && <div className="hint" style={{ marginLeft: 14 }}>{videoStatus}</div>}
+      {openPanel === "cover" && story.has_image && (
+        <div className="inline-form">
+          <img className="scene-image" src={`${API_BASE}/stories/${story.id}/image`} alt="Story cover" />
+        </div>
+      )}
+
+      {openPanel === "branch" && (
+        <div className="inline-form">
+          <textarea placeholder="What changes at some point in this story?" value={changedDecision}
+            onChange={(e) => setChangedDecision(e.target.value)} />
+          <button className="btn small" onClick={doBranch} disabled={busy}>Generate branch</button>
+          <div className={`status ${status.cls}`}>{status.text}</div>
+          {resultAudio && <audio controls autoPlay src={resultAudio} />}
+        </div>
+      )}
+      {openPanel === "lang" && (
+        <div className="inline-form">
+          <div className="row">
+            <div style={{ maxWidth: 220 }}><LangSelect value={targetLang} onChange={setTargetLang} /></div>
+            <button className="btn small" onClick={doSwitchLanguage} disabled={busy}>Re-render in this language</button>
+          </div>
+          <div className={`status ${status.cls}`}>{status.text}</div>
+          {resultAudio && <audio controls autoPlay src={resultAudio} />}
+        </div>
+      )}
+      {openPanel === "comic" && (
+        <div className="inline-form"><ComicView apiKey={apiKey} storyId={story.id} /></div>
+      )}
+      {openPanel === "game" && (
+        <div className="inline-form"><GameTreeView apiKey={apiKey} storyId={story.id} /></div>
+      )}
+    </div>
+  );
 }
 
-$("refreshStoriesBtn").addEventListener("click", () => { loadStories(); loadCharacters(); });
-document.querySelector('[data-subpane="browseSub"]').addEventListener("click", () => { loadStories(); loadCharacters(); }, { once: true });
+function StoriesPanel({ apiKey, refreshToken }) {
+  const [stories, setStories] = useState(null);
 
-function renderConfigValue(value) {
-  if (value === null || value === undefined) return "<em>null</em>";
-  if (Array.isArray(value)) return value.join(", ") || "<em>(none)</em>";
-  if (typeof value === "object") {
-    const rows = Object.entries(value).map(([k, v]) => `<tr><td>${k}</td><td>${renderConfigValue(v)}</td></tr>`).join("");
-    return `<table class="config-table">${rows}</table>`;
-  }
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
+  const load = useCallback(() => {
+    setStories(null);
+    fetch(`${API_BASE}/stories`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then((d) => setStories(d.stories || []))
+      .catch(() => setStories([]));
+  }, [apiKey]);
+
+  useEffect(load, [load, refreshToken]);
+
+  return (
+    <div className="card">
+      <h3>Stories &amp; branches</h3>
+      <button className="btn ghost small" onClick={load} style={{ marginBottom: 12 }}>Refresh</button>
+      {stories === null && <div className="list-empty">Loading...</div>}
+      {stories && stories.length === 0 && <div className="list-empty">No stories yet - generate one under Dream to Story or Villain.</div>}
+      {stories && stories.map((s) => <StoryRow key={s.id} apiKey={apiKey} story={s} onChanged={load} />)}
+    </div>
+  );
 }
 
-function renderConfigSection(title, obj) {
-  const rows = Object.entries(obj).map(([k, v]) => `<tr><td>${k}</td><td>${renderConfigValue(v)}</td></tr>`).join("");
-  return `<div class="config-section"><h3>${title}</h3><table class="config-table">${rows}</table></div>`;
+/* ---------------- Characters ---------------- */
+function CharacterRow({ apiKey, character, onRevived }) {
+  const [open, setOpen] = useState(false);
+  const [newSetting, setNewSetting] = useState("");
+  const [status, setStatus] = useState({ text: "", cls: "" });
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const revive = async () => {
+    if (!newSetting.trim()) { setStatus({ text: "Describe the new setting.", cls: "error" }); return; }
+    setBusy(true); setStatus({ text: "Reviving character...", cls: "" });
+    try {
+      const resp = await fetch(`${API_BASE}/characters/${character.id}/revive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify({ new_setting: newSetting }),
+      });
+      if (!resp.ok) throw new Error(await readError(resp));
+      const blob = await resp.blob();
+      setAudioUrl(URL.createObjectURL(blob));
+      setStatus({ text: "Done.", cls: "ok" });
+      if (onRevived) onRevived();
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div>
+      <div className="list-row">
+        <div className="list-main">
+          <div className="list-title">{character.name}</div>
+          <div className="list-sub">{character.personality || ""}</div>
+        </div>
+        <div className="list-actions">
+          <button className="btn ghost small" onClick={() => setOpen(!open)}>Revive</button>
+        </div>
+      </div>
+      {open && (
+        <div className="inline-form">
+          <textarea placeholder="Describe the new setting/universe to place them in..." value={newSetting}
+            onChange={(e) => setNewSetting(e.target.value)} />
+          <button className="btn small" onClick={revive} disabled={busy}>Generate revival</button>
+          <div className={`status ${status.cls}`}>{status.text}</div>
+          {audioUrl && <audio controls autoPlay src={audioUrl} />}
+        </div>
+      )}
+    </div>
+  );
 }
 
-$("loadConfigBtn").addEventListener("click", async () => {
-  const statusEl = $("configStatus");
-  const output = $("configOutput");
-  statusEl.className = "status";
-  statusEl.textContent = "Loading...";
-  output.innerHTML = "";
-  try {
-    const resp = await fetch(API_BASE + "/config");
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const cfg = await resp.json();
-    const titles = { env: "Environment", synthesis: "Synthesis", bgm_sfx_mix: "BGM / SFX mix", voice_profiles: "Voice profiles", story_gen: "Story generation" };
-    output.innerHTML = Object.entries(cfg).map(([key, val]) => renderConfigSection(titles[key] || key, val)).join("");
-    statusEl.className = "status ok";
-    statusEl.textContent = "Loaded.";
-  } catch (err) {
-    statusEl.className = "status error";
-    statusEl.textContent = err.message || String(err);
-  }
-});
+function CharactersPanel({ apiKey, refreshToken }) {
+  const [characters, setCharacters] = useState(null);
+
+  const load = useCallback(() => {
+    setCharacters(null);
+    fetch(`${API_BASE}/characters`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then((d) => setCharacters(d.characters || []))
+      .catch(() => setCharacters([]));
+  }, [apiKey]);
+
+  useEffect(load, [load, refreshToken]);
+
+  return (
+    <div className="card">
+      <h3>Persistent characters</h3>
+      <button className="btn ghost small" onClick={load} style={{ marginBottom: 12 }}>Refresh</button>
+      {characters === null && <div className="list-empty">Loading...</div>}
+      {characters && characters.length === 0 && <div className="list-empty">No characters yet - named characters are auto-saved from Dream to Story.</div>}
+      {characters && characters.map((c) => <CharacterRow key={c.id} apiKey={apiKey} character={c} onRevived={load} />)}
+    </div>
+  );
+}
+
+/* ---------------- Quality backlog ---------------- */
+function QualityPanel({ apiKey }) {
+  const [backlog, setBacklog] = useState(null);
+
+  const load = useCallback(() => {
+    setBacklog(null);
+    fetch(`${API_BASE}/quality/backlog`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then((d) => setBacklog(d.backlog || []))
+      .catch(() => setBacklog([]));
+  }, [apiKey]);
+
+  useEffect(load, [load]);
+
+  return (
+    <div className="card">
+      <div className="usp-banner">
+        <div className="t">Checked, not assumed</div>
+        <p>Every render is scored on native-sounding phrasing, tone, cultural accuracy, and emotional delivery. A low score gets one automatic rewrite - what's listed below is still weak after that attempt.</p>
+      </div>
+      <h3>Quality backlog</h3>
+      <button className="btn ghost small" onClick={load} style={{ marginBottom: 12 }}>Refresh</button>
+      {backlog === null && <div className="list-empty">Loading...</div>}
+      {backlog && backlog.length === 0 && <div className="list-empty">Nothing in the backlog - everything scored above threshold.</div>}
+      {backlog && backlog.map((entry) => (
+        <div className="list-row" key={entry.id}>
+          <div className="list-main">
+            <div className="list-title">Story #{entry.story_id}</div>
+            <div className="list-sub">
+              {Object.entries(entry.axis_scores || {})
+                .filter(([k]) => ["native_sounding", "tone_appropriateness", "cultural_accuracy", "emotional_delivery"].includes(k))
+                .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join(" · ")}
+            </div>
+          </div>
+          <span className={`badge ${entry.rewritten ? "warn" : "bad"}`}>
+            {entry.rewritten ? "rewritten, still weak" : "not rewritten"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------- Services ---------------- */
+const SERVICES = [
+  { name: "Infinity Studio API", port: 8604, path: "/health", format: (d) => `${d.languages_loaded?.length ?? "?"} languages · ${d.cpu_threads} threads` },
+  { name: "IndicF5 (cloning)", port: 8600, path: "/health", format: (d) => `model loaded: ${d.model_loaded} · ${d.cpu_count} cores` },
+  { name: "IndicXlit", port: 8602, path: "/health", format: () => "transliteration service" },
+  { name: "Whisper STT", port: 8603, path: "/health", format: (d) => `model loaded: ${d.model_loaded}` },
+];
+
+function ServiceRow({ svc }) {
+  const [state, setState] = useState({ status: "pending", detail: "checking...", time: "" });
+
+  const check = useCallback(async () => {
+    setState({ status: "pending", detail: "checking...", time: "" });
+    const t0 = performance.now();
+    try {
+      const resp = await fetch(`http://178.104.214.191:${svc.port}${svc.path}`, { signal: AbortSignal.timeout(8000) });
+      const elapsed = Math.round(performance.now() - t0);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      setState({ status: "up", detail: svc.format(data), time: `${elapsed}ms` });
+    } catch (err) {
+      const elapsed = Math.round(performance.now() - t0);
+      setState({ status: "down", detail: err.name === "TimeoutError" ? "timed out" : "unreachable", time: `${elapsed}ms` });
+    }
+  }, [svc]);
+
+  useEffect(() => { check(); }, [check]);
+
+  return (
+    <div className="svc-row">
+      <span className={`dot-status ${state.status}`}></span>
+      <span className="svc-name">{svc.name}</span>
+      <span className="svc-detail">{state.detail}</span>
+      <span className="hint">{state.time}</span>
+    </div>
+  );
+}
+
+function ServicesPanel() {
+  const [key, setKey] = useState(0);
+  return (
+    <div className="card">
+      <h3>Services</h3>
+      <button className="btn ghost small" onClick={() => setKey(key + 1)} style={{ marginBottom: 12 }}>Refresh</button>
+      {SERVICES.map((s) => <ServiceRow key={s.name + key} svc={s} />)}
+    </div>
+  );
+}
+
+/* ---------------- Config ---------------- */
+function ConfigSection({ title, data }) {
+  return (
+    <div className="card">
+      <h3>{title}</h3>
+      <div className="preview-list">
+        {Object.entries(data || {}).map(([k, v]) => (
+          <div className="preview-row" key={k}>
+            <div className="pr-label">{k}</div>
+            <div className="pr-value" style={{ maxWidth: 420, whiteSpace: "normal", textAlign: "left" }}>
+              {typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConfigPanel({ apiKey }) {
+  const [config, setConfig] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    setConfig(null); setError("");
+    fetch(`${API_BASE}/config`, { headers: authHeaders(apiKey) })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(setConfig)
+      .catch((e) => setError(e.message || String(e)));
+  }, [apiKey]);
+
+  useEffect(load, [load]);
+
+  if (error) return <div className="card"><div className="status error">{error}</div></div>;
+  if (!config) return <div className="card"><div className="hint">Loading live configuration…</div></div>;
+
+  return (
+    <div>
+      <ConfigSection title="Environment" data={config.env} />
+      <ConfigSection title="Synthesis" data={config.synthesis} />
+      <ConfigSection title="BGM / SFX mix" data={config.bgm_sfx_mix} />
+      <ConfigSection title="Story generation" data={config.story_gen} />
+      {config.voice_profiles && (
+        <div className="card">
+          <h3>Voice profiles</h3>
+          <div className="grid">
+            {Object.entries(config.voice_profiles.profiles || {}).map(([name, p]) => (
+              <div className="comic-panel" key={name} style={{ padding: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>{name}</div>
+                <div className="hint">pitch {p.pitch_shift_semitones}st · EQ {p.shelf_eq_tilt_db}dB · speed ×{p.speed_multiplier}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Icons ---------------- */
+const ICON_PROPS = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" };
+
+const ICONS = {
+  dashboard: (
+    <svg {...ICON_PROPS}>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    </svg>
+  ),
+  narrate: (
+    <svg {...ICON_PROPS}>
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none" />
+      <path d="M16.5 9a4 4 0 0 1 0 6" />
+      <path d="M19.5 6.5a8 8 0 0 1 0 11" />
+    </svg>
+  ),
+  mic: (
+    <svg {...ICON_PROPS}>
+      <rect x="9" y="2.5" width="6" height="12" rx="3" />
+      <path d="M5.5 10.5a6.5 6.5 0 0 0 13 0" />
+      <line x1="12" y1="19.5" x2="12" y2="22" />
+      <line x1="8" y1="22" x2="16" y2="22" />
+    </svg>
+  ),
+  sparkle: (
+    <svg {...ICON_PROPS} fill="currentColor" stroke="none">
+      <path d="M12 2.5l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9L12 2.5z" />
+      <path d="M19 14.5l.8 2.3 2.3.8-2.3.8-.8 2.3-.8-2.3-2.3-.8 2.3-.8.8-2.3z" />
+    </svg>
+  ),
+  villain: (
+    <svg {...ICON_PROPS}>
+      <path d="M12 3.2c-4.1 0-7 2.6-7 6.3 0 2 .9 3.5 2 4.6.3 2 2 3.7 5 3.7s4.7-1.7 5-3.7c1.1-1.1 2-2.6 2-4.6 0-3.7-2.9-6.3-7-6.3z" />
+      <circle cx="9.3" cy="10" r="1" fill="currentColor" stroke="none" />
+      <circle cx="14.7" cy="10" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  branch: (
+    <svg {...ICON_PROPS}>
+      <line x1="6" y1="3.5" x2="6" y2="15" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="18" cy="6" r="2.5" />
+      <path d="M18 8.5a8 8 0 0 1-8 8" />
+    </svg>
+  ),
+  users: (
+    <svg {...ICON_PROPS}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+      <circle cx="17" cy="9" r="2.3" />
+      <path d="M15.3 20c0-2.4 1.7-4.4 3.9-4.9" />
+    </svg>
+  ),
+  check: (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="8 12.5 11 15.5 16 9" />
+    </svg>
+  ),
+  settings: (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="3" />
+      <line x1="12" y1="2" x2="12" y2="5" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="2" y1="12" x2="5" y2="12" />
+      <line x1="19" y1="12" x2="22" y2="12" />
+      <line x1="4.9" y1="4.9" x2="7" y2="7" />
+      <line x1="17" y1="17" x2="19.1" y2="19.1" />
+      <line x1="4.9" y1="19.1" x2="7" y2="17" />
+      <line x1="17" y1="7" x2="19.1" y2="4.9" />
+    </svg>
+  ),
+  book: (
+    <svg {...ICON_PROPS}>
+      <path d="M4 4.5C4 3.7 4.7 3 5.5 3H12v16H5.5c-.8 0-1.5.7-1.5 1.5V4.5z" />
+      <path d="M20 4.5C20 3.7 19.3 3 18.5 3H12v16h6.5c.8 0 1.5.7 1.5 1.5V4.5z" />
+    </svg>
+  ),
+  clock: (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 16 14" />
+    </svg>
+  ),
+  config: (
+    <svg {...ICON_PROPS}>
+      <path d="M8 3.5C6 3.5 5.5 4.5 5.5 6v3c0 1-1 1.5-2 1.5 1 0 2 .5 2 1.5v3c0 1.5.5 2.5 2.5 2.5" />
+      <path d="M16 3.5c2 0 2.5 1 2.5 2.5v3c0 1 1 1.5 2 1.5-1 0-2 .5-2 1.5v3c0 1.5-.5 2.5-2.5 2.5" />
+    </svg>
+  ),
+};
+
+function Icon({ name }) {
+  return <span className="navicon">{ICONS[name] || null}</span>;
+}
+
+/* ---------------- App shell ---------------- */
+const TABS = [
+  { id: "overview", label: "Overview", icon: "dashboard" },
+  { id: "narrate", label: "Narrate", icon: "narrate" },
+  { id: "clone", label: "Clone voice", icon: "mic" },
+  { id: "dream", label: "Dream to Story", icon: "sparkle" },
+  { id: "villain", label: "Villain", icon: "villain" },
+  { id: "stories", label: "Stories & Branches", icon: "branch" },
+  { id: "characters", label: "Characters", icon: "users" },
+  { id: "quality", label: "Quality backlog", icon: "check" },
+  { id: "services", label: "Services", icon: "settings" },
+  { id: "config", label: "Config", icon: "config" },
+];
+
+const TAB_META = {
+  overview: { title: "Overview", sub: "Everything Infinity Studio has generated so far, at a glance." },
+  narrate: { title: "Narrate", sub: "Text to speech across 11 Indian languages, with optional mood-matched ambience." },
+  clone: { title: "Clone voice", sub: "Proxy to a reference-audio-conditioned cloning service - slower by nature, not a bug." },
+  dream: { title: "Dream to Story", sub: "Turn a description into a narrated scene - characters persist, quality is scored, illustrations are optional." },
+  villain: { title: "Personalized villain", sub: "A villain built around fears you actually describe, not a generic antagonist." },
+  stories: { title: "Stories & Branches", sub: "Branch from a changed decision, switch language, view as comic panels, export video, or walk the choice-tree." },
+  characters: { title: "Characters", sub: "Named characters persist across stories - revive them into any new setting." },
+  quality: { title: "Quality backlog", sub: "Cultural authenticity, measured. See what's still weak after an automatic rewrite." },
+  services: { title: "Services", sub: "Live status of every backing service this UI talks to." },
+  config: { title: "Config", sub: "Live runtime configuration, read directly from the running process - can't go stale like a static doc." },
+};
+
+function NavItems({ activeTab, setActiveTab }) {
+  return TABS.map((t) => (
+    <div key={t.id} className={`navitem ${activeTab === t.id ? "active" : ""}`} onClick={() => setActiveTab(t.id)}>
+      <Icon name={t.icon} />
+      <span>{t.label}</span>
+    </div>
+  ));
+}
+
+/* ---------------- Overview / Dashboard ---------------- */
+function OverviewPanel({ apiKey, setActiveTab, refreshToken }) {
+  const [stats, setStats] = useState({ stories: null, characters: null, backlog: null });
+  const [health, setHealth] = useState(null);
+
+  useEffect(() => {
+    // /stories has no count endpoint - fetch a generous page and use its
+    // length as a floor (good enough for a dashboard tile, not an exact count).
+    fetch(`${API_BASE}/stories?limit=500`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then((d) => setStats((s) => ({ ...s, stories: (d.stories || []).length })))
+      .catch(() => setStats((s) => ({ ...s, stories: "—" })));
+    fetch(`${API_BASE}/characters?limit=500`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then((d) => setStats((s) => ({ ...s, characters: (d.characters || []).length })))
+      .catch(() => setStats((s) => ({ ...s, characters: "—" })));
+    fetch(`${API_BASE}/quality/backlog?limit=500`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then((d) => setStats((s) => ({ ...s, backlog: (d.backlog || []).length })))
+      .catch(() => setStats((s) => ({ ...s, backlog: "—" })));
+    fetch(`${API_BASE}/health`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then(setHealth)
+      .catch(() => setHealth(null));
+  }, [apiKey, refreshToken]);
+
+  const actions = [
+    { tab: "dream", icon: "sparkle", label: "Dream to Story", sub: "Describe a scene, get a narrated story" },
+    { tab: "villain", icon: "villain", label: "Personalized villain", sub: "Built around a listener's fears" },
+    { tab: "stories", icon: "branch", label: "Branch a story", sub: "Re-fork from a changed decision" },
+    { tab: "narrate", icon: "narrate", label: "Text to speech", sub: "11 languages, mood-matched ambience" },
+  ];
+
+  return (
+    <div>
+      <div className="usp-banner">
+        <div className="t">One story. Infinite cultures.</div>
+        <p>Built for the listener the internet still dubs over - the same character, the same moment, told with someone's own festivals, landmarks, and voice, in whichever of 11 languages they reach for.</p>
+      </div>
+
+      <div className="stat-grid" style={{ marginBottom: 18 }}>
+        <div className="stat-card">
+          <div className="stat-icon"><Icon name="book" /></div>
+          <div className="stat-value">{stats.stories ?? "…"}</div>
+          <div className="stat-label">Stories generated</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon"><Icon name="users" /></div>
+          <div className="stat-value">{stats.characters ?? "…"}</div>
+          <div className="stat-label">Persistent characters</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon"><Icon name="check" /></div>
+          <div className="stat-value">{stats.backlog ?? "…"}</div>
+          <div className="stat-label">In quality backlog</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon"><Icon name="clock" /></div>
+          <div className="stat-value">{health ? `${health.languages_loaded?.length ?? 11}` : "…"}</div>
+          <div className="stat-label">Languages live</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Quick actions</h3>
+        <div className="quick-actions">
+          {actions.map((a) => (
+            <div className="quick-action" key={a.tab} onClick={() => setActiveTab(a.tab)}>
+              <div className="qa-icon"><Icon name={a.icon} /></div>
+              <div>
+                <div className="qa-label">{a.label}</div>
+                <div className="qa-sub">{a.sub}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>System status</h3>
+        <div className="health-strip">
+          <span className="health-pill">{health ? "● API reachable" : "○ checking…"}</span>
+          {health && <span className="health-pill">CPU threads: {health.cpu_threads}</span>}
+          {health && <span className="health-pill">emotion auto: {String(health.emotion_auto_available)}</span>}
+        </div>
+        <div className="hint" style={{ marginTop: 10 }}>See the Services tab for live per-service status of every backing service this UI talks to.</div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [apiKey, setApiKey] = useApiKey();
+  const [refreshToken, setRefreshToken] = useState(0);
+  const bump = () => setRefreshToken((x) => x + 1);
+  const meta = TAB_META[activeTab];
+
+  return (
+    <div className="app-shell">
+      <div className="sidebar">
+        <div className="brand">
+          <img src="logo.png" alt="Infinity Studio" />
+          <div className="brand-text">
+            <div className="brand-name">INFINITY STUDIO</div>
+            <div className="brand-sub">Cultural Story OS</div>
+          </div>
+        </div>
+        <div className="navlist"><NavItems activeTab={activeTab} setActiveTab={setActiveTab} /></div>
+        <div className="apikey-box">
+          <label>API key</label>
+          <input type="password" placeholder="x-api-key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="mobile-tabs">
+        <NavItems activeTab={activeTab} setActiveTab={setActiveTab} />
+      </div>
+
+      <div className="main">
+        <div className="page-head">
+          <h1 className="page-title">{meta.title}</h1>
+          <p className="page-sub">{meta.sub}</p>
+        </div>
+
+        {activeTab === "overview" && <OverviewPanel apiKey={apiKey} setActiveTab={setActiveTab} refreshToken={refreshToken} />}
+        {activeTab === "narrate" && <NarratePanel apiKey={apiKey} />}
+        {activeTab === "clone" && <ClonePanel apiKey={apiKey} />}
+        {activeTab === "dream" && <DreamPanel apiKey={apiKey} onStorySaved={bump} />}
+        {activeTab === "villain" && <VillainPanel apiKey={apiKey} onStorySaved={bump} />}
+        {activeTab === "stories" && <StoriesPanel apiKey={apiKey} refreshToken={refreshToken} />}
+        {activeTab === "characters" && <CharactersPanel apiKey={apiKey} refreshToken={refreshToken} />}
+        {activeTab === "quality" && <QualityPanel apiKey={apiKey} />}
+        {activeTab === "services" && <ServicesPanel />}
+        {activeTab === "config" && <ConfigPanel apiKey={apiKey} />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
