@@ -91,3 +91,68 @@ def test_save_and_get_character_with_voice_profile(fresh_db):
     character = fresh_db.get_character(char_id)
     assert character["name"] == "Vaal"
     assert character["voice_profile"] == "deepest"
+
+
+def test_get_story_lineage_empty_for_root_story(fresh_db):
+    story_id = fresh_db.save_story(title="root", language="hin", text="root text")
+    assert fresh_db.get_story_lineage(story_id) == []
+
+
+def test_get_story_lineage_walks_full_chain_root_first(fresh_db):
+    root_id = fresh_db.save_story(title="root", language="hin", text="root text")
+    mid_id = fresh_db.save_story(
+        title="mid", language="hin", text="mid text", parent_story_id=root_id, branch_note="decision A",
+    )
+    leaf_id = fresh_db.save_story(
+        title="leaf", language="hin", text="leaf text", parent_story_id=mid_id, branch_note="decision B",
+    )
+
+    lineage = fresh_db.get_story_lineage(leaf_id)
+    assert [a["id"] for a in lineage] == [root_id, mid_id]
+    assert lineage[1]["branch_note"] == "decision A"
+
+
+def test_get_child_branches(fresh_db):
+    root_id = fresh_db.save_story(title="root", language="hin", text="root text")
+    child_id = fresh_db.save_story(
+        title="child", language="hin", text="child text", parent_story_id=root_id, branch_note="a choice",
+    )
+    children = fresh_db.get_child_branches(root_id)
+    assert [c["id"] for c in children] == [child_id]
+    assert children[0]["branch_note"] == "a choice"
+
+
+def test_save_quality_entry_and_list_backlog(fresh_db):
+    story_id = fresh_db.save_story(title="weak", language="hin", text="weak text")
+    fresh_db.save_quality_entry(story_id, {"overall": 40, "scored": True}, rewritten=True)
+    backlog = fresh_db.list_quality_backlog()
+    assert len(backlog) == 1
+    assert backlog[0]["story_id"] == story_id
+    assert backlog[0]["rewritten"] is True
+    assert backlog[0]["axis_scores"]["overall"] == 40
+
+
+def test_save_scene_image_and_get_images_for_story(fresh_db):
+    # Distinct from save_story_image/get_story_image above (single cover
+    # image BLOB) - this is a time-mapped storyboard entry (see images.py).
+    story_id = fresh_db.save_story(title="illustrated", language="hin", text="story text")
+    fresh_db.save_scene_image(story_id, 0, 0.0, 5.0, "एक बार की बात है", "a cinematic prompt", "/static/images/1/0.png")
+    images = fresh_db.get_images_for_story(story_id)
+    assert len(images) == 1
+    assert images[0]["url"] == "/static/images/1/0.png"
+    assert images[0]["excerpt"] == "एक बार की बात है"
+
+
+def test_get_variants_empty_when_none_exist(fresh_db):
+    story_id = fresh_db.save_story(title="original", language="hin", text="story text")
+    assert fresh_db.get_variants(story_id) == []
+
+
+def test_get_variants_returns_linked_language_variants(fresh_db):
+    original_id = fresh_db.save_story(title="original", language="hin", text="story text")
+    variant_id = fresh_db.save_story(
+        title="original (tam)", language="tam", text="translated text", variant_of_story_id=original_id,
+    )
+    variants = fresh_db.get_variants(original_id)
+    assert [v["id"] for v in variants] == [variant_id]
+    assert variants[0]["language"] == "tam"

@@ -1,6 +1,7 @@
+import story_gen
 from story_gen import LANGUAGE_CULTURAL_CONTEXT, LANGUAGE_NAMES, _ARC_CLAUSE, _cultural_clause
 
-REQUIRED_DIMENSIONS = {"places", "festivals", "folklore", "deities", "names"}
+REQUIRED_DIMENSIONS = {"places", "festivals", "folklore", "deities", "names", "register_note"}
 
 
 def test_arc_clause_asks_for_a_real_turn_and_resolution():
@@ -23,10 +24,10 @@ def test_every_language_has_all_dimensions():
 
 def test_every_language_has_nonempty_places_festivals_folklore_names():
     # deities is allowed to be empty (e.g. Punjabi, where Sikh tradition
-    # doesn't fit a devotional-deity-genre framing) - the other four
+    # doesn't fit a devotional-deity-genre framing) - the other five
     # dimensions should always have real content.
     for lang, ctx in LANGUAGE_CULTURAL_CONTEXT.items():
-        for dim in ("places", "festivals", "folklore", "names"):
+        for dim in ("places", "festivals", "folklore", "names", "register_note"):
             assert ctx[dim], f"{lang}.{dim} is empty"
 
 
@@ -67,3 +68,53 @@ def test_cultural_clause_is_soft_not_mandatory():
     # touchstones - abstract/fantastical stories shouldn't be reshaped.
     clause = _cultural_clause("hin")
     assert "don't force" in clause.lower() or "shouldn't be" in clause.lower()
+
+
+def test_cultural_clause_includes_festival_and_register_hints():
+    clause = _cultural_clause("ben")
+    assert "Durga Puja" in clause
+    assert "apni" in clause or "tumi" in clause
+
+
+def test_generate_continuation_includes_ancestor_summaries(monkeypatch):
+    captured = {}
+
+    def _fake_chat_completion(system_prompt, user_content, **kwargs):
+        captured["user_content"] = user_content
+        return "the continuation"
+
+    monkeypatch.setattr(story_gen, "_chat_completion", _fake_chat_completion)
+    result = story_gen.generate_continuation(
+        "prior story text", "a door opens", "hin",
+        ancestor_summaries=["earlier decision one", "earlier decision two"],
+    )
+    assert result == "the continuation"
+    assert "earlier decision one" in captured["user_content"]
+    assert "earlier decision two" in captured["user_content"]
+    assert "prior story text" in captured["user_content"]
+
+
+def test_generate_continuation_without_ancestor_summaries_omits_lineage_note(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        story_gen, "_chat_completion",
+        lambda sp, uc, **k: captured.setdefault("uc", uc) or "x",
+    )
+    story_gen.generate_continuation("prior text", "change", "hin")
+    assert "EARLIER IN THIS STORY" not in captured["uc"]
+
+
+def test_adapt_story_language_targets_correct_language_names(monkeypatch):
+    captured = {}
+
+    def _fake_chat_completion(system_prompt, user_content, **kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["user_content"] = user_content
+        return "தமிழில் மொழிபெயர்க்கப்பட்ட கதை"
+
+    monkeypatch.setattr(story_gen, "_chat_completion", _fake_chat_completion)
+    result = story_gen.adapt_story_language("मूल हिंदी कहानी", "hin", "tam")
+    assert result == "தமிழில் மொழிபெயர்க்கப்பட்ட கதை"
+    assert "Hindi" in captured["system_prompt"]
+    assert "Tamil" in captured["system_prompt"]
+    assert captured["user_content"] == "मूल हिंदी कहानी"

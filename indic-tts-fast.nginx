@@ -14,7 +14,7 @@ server {
     # the UI silently comes back null even on a fully successful request
     # (this exact bug shipped and was caught live: "Story #null", "image
     # failed: unknown error" - the backend had succeeded both times).
-    set $cors_expose_headers "X-Story-Text-B64, X-Resolved-Emotion, X-Story-Id, X-Character-Ids, X-Has-Image, X-Image-Error-B64, X-Video-Available, X-Parent-Story-Id, X-Villain-Name-B64, X-Character-Id, X-Audio-Format, X-Sample-Rate, X-Channels";
+    set $cors_expose_headers "X-Story-Text-B64, X-Resolved-Emotion, X-Story-Id, X-Character-Ids, X-Has-Image, X-Image-Error-B64, X-Video-Available, X-Parent-Story-Id, X-Villain-Name-B64, X-Character-Id, X-Audio-Format, X-Sample-Rate, X-Channels, X-Image-Count, X-Quality-Scored, X-Quality-Overall, X-Quality-Rewritten, X-Variant-Of-Story-Id";
 
     location / {
         if ($request_method = OPTIONS) {
