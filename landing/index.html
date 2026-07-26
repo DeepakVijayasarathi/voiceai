@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infinity Studio — Cultural Story Operating System</title>
+<meta name="description" content="AI storytelling and text-to-speech across 11 Indian languages — real culture, not translation. CPU-only, no GPU required.">
+<style>
+  :root{
+    --bg:#0b0710; --bg2:#150c1f; --panel:#1a1024; --panel2:#20142d;
+    --border:rgba(255,255,255,0.08);
+    --gold:#e8b04b; --gold2:#f4d485; --maroon:#c2493d;
+    --teal:#3ecfb2; --ink:#f3ecff; --ink-dim:#b7abcf; --ink-dimmer:#8377a0;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;
+    overflow-x:hidden;
+  }
+  a{color:inherit; text-decoration:none;}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 28px;}
+  img,svg{display:block; max-width:100%;}
+
+  /* ---------- background texture ---------- */
+  .bg-glow{
+    position:fixed; inset:0; z-index:-2; pointer-events:none;
+    background:
+      radial-gradient(760px 480px at 12% -8%, rgba(194,73,61,0.35), transparent 60%),
+      radial-gradient(900px 600px at 88% 8%, rgba(62,207,178,0.16), transparent 55%),
+      radial-gradient(1200px 800px at 50% 100%, rgba(232,176,75,0.10), transparent 60%),
+      var(--bg);
+  }
+  .bg-grain{
+    position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:0.035;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+
+  /* ---------- nav ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    backdrop-filter:blur(14px);
+    background:rgba(11,7,16,0.72);
+    border-bottom:1px solid var(--border);
+  }
+  nav{display:flex; align-items:center; justify-content:space-between; padding:16px 0;}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; font-size:17px; letter-spacing:0.2px;}
+  .brand .mark{
+    width:30px; height:30px; border-radius:9px;
+    background:linear-gradient(135deg,var(--gold),var(--maroon));
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px; box-shadow:0 4px 18px rgba(232,176,75,0.35);
+  }
+  .navlinks{display:flex; gap:28px; font-size:14.5px; color:var(--ink-dim);}
+  .navlinks a:hover{color:var(--ink);}
+  .navlinks{display:none;}
+  @media(min-width:840px){ .navlinks{display:flex;} }
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:11px 22px; border-radius:999px; font-weight:600; font-size:14.5px;
+    border:1px solid transparent; cursor:pointer; transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+    white-space:nowrap;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{
+    background:linear-gradient(135deg,var(--gold2),var(--gold) 55%, var(--maroon));
+    color:#1c0f08; box-shadow:0 10px 30px -8px rgba(232,176,75,0.55);
+  }
+  .btn-primary:hover{box-shadow:0 14px 36px -6px rgba(232,176,75,0.7); transform:translateY(-1px);}
+  .btn-ghost{background:rgba(255,255,255,0.04); border-color:var(--border); color:var(--ink);}
+  .btn-ghost:hover{background:rgba(255,255,255,0.08);}
+  .btn-lg{padding:15px 30px; font-size:16px;}
+
+  /* ---------- hero ---------- */
+  .hero{padding:96px 0 70px; text-align:center; position:relative;}
+  .kicker{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:7px 16px; border-radius:999px; font-size:13px; font-weight:600;
+    color:var(--gold2); background:rgba(232,176,75,0.10); border:1px solid rgba(232,176,75,0.28);
+    margin-bottom:26px; letter-spacing:0.3px;
+  }
+  .kicker .dot{width:7px; height:7px; border-radius:50%; background:var(--teal); box-shadow:0 0 10px var(--teal); animation:pulse 1.8s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+  h1{
+    font-size:clamp(34px,6vw,64px); font-weight:800; letter-spacing:-1.5px; line-height:1.06;
+    background:linear-gradient(180deg,#fff,var(--ink) 55%,var(--ink-dim));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  h1 .accent{
+    background:linear-gradient(135deg,var(--gold2),var(--maroon));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub{
+    max-width:640px; margin:22px auto 0; font-size:18px; color:var(--ink-dim);
+  }
+  .hero-cta{display:flex; gap:14px; justify-content:center; margin-top:38px; flex-wrap:wrap;}
+  .hero-note{margin-top:18px; font-size:13px; color:var(--ink-dimmer);}
+
+  /* floating quote card */
+  .quote-card{
+    max-width:640px; margin:56px auto 0; text-align:left;
+    background:linear-gradient(155deg,var(--panel2),var(--panel));
+    border:1px solid var(--border); border-radius:var(--radius);
+    padding:26px 28px; box-shadow:0 30px 60px -30px rgba(0,0,0,0.6);
+    animation:float 6s ease-in-out infinite;
+  }
+  @keyframes float{0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);}}
+  .quote-card .tam{font-size:17px; color:var(--gold2); margin-bottom:8px;}
+  .quote-card .eng{font-size:14.5px; color:var(--ink-dim);}
+  .quote-card .tag{margin-top:14px; font-size:12.5px; color:var(--ink-dimmer); display:flex; gap:8px; align-items:center;}
+  .quote-card .tag .pip{width:6px; height:6px; border-radius:50%; background:var(--teal);}
+
+  /* ---------- stats ---------- */
+  .stats{
+    display:grid; grid-template-columns:repeat(2,1fr); gap:1px;
+    background:var(--border); border:1px solid var(--border); border-radius:var(--radius);
+    overflow:hidden; margin:70px 0;
+  }
+  @media(min-width:720px){ .stats{grid-template-columns:repeat(4,1fr);} }
+  .stat{background:var(--panel); padding:28px 20px; text-align:center;}
+  .stat .num{font-size:30px; font-weight:800; color:var(--gold2);}
+  .stat .lbl{font-size:13px; color:var(--ink-dim); margin-top:6px;}
+
+  /* ---------- section shell ---------- */
+  section{padding:64px 0;}
+  .section-head{max-width:640px; margin:0 auto 48px; text-align:center;}
+  .eyebrow{
+    font-size:13px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase;
+    color:var(--teal); margin-bottom:12px;
+  }
+  h2{font-size:clamp(26px,4vw,38px); font-weight:800; letter-spacing:-0.7px;}
+  .section-head p{margin-top:14px; color:var(--ink-dim); font-size:16px;}
+
+  /* ---------- problem/solution ---------- */
+  .compare{display:grid; gap:22px; grid-template-columns:1fr; margin-top:10px;}
+  @media(min-width:820px){ .compare{grid-template-columns:1fr 1fr;} }
+  .compare-card{
+    border-radius:var(--radius); padding:30px; border:1px solid var(--border);
+  }
+  .compare-card.bad{background:linear-gradient(155deg, rgba(194,73,61,0.10), var(--panel));}
+  .compare-card.good{background:linear-gradient(155deg, rgba(62,207,178,0.10), var(--panel)); border-color:rgba(62,207,178,0.25);}
+  .compare-card h3{font-size:19px; margin-bottom:16px; display:flex; align-items:center; gap:10px;}
+  .compare-card ul{list-style:none;}
+  .compare-card li{
+    font-size:14.5px; color:var(--ink-dim); padding:9px 0 9px 26px; position:relative; border-top:1px solid var(--border);
+  }
+  .compare-card li:first-of-type{border-top:none;}
+  .compare-card.bad li::before{content:"✕"; position:absolute; left:0; color:var(--maroon); font-weight:700;}
+  .compare-card.good li::before{content:"✓"; position:absolute; left:0; color:var(--teal); font-weight:700;}
+
+  /* ---------- features ---------- */
+  .feat-grid{display:grid; gap:20px; grid-template-columns:1fr;}
+  @media(min-width:700px){ .feat-grid{grid-template-columns:1fr 1fr;} }
+  @media(min-width:1080px){ .feat-grid{grid-template-columns:1fr 1fr 1fr;} }
+  .feat-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:26px; transition:transform .2s ease, border-color .2s ease, background .2s ease;
+  }
+  .feat-card:hover{transform:translateY(-4px); border-color:rgba(232,176,75,0.35); background:var(--panel2);}
+  .feat-icon{
+    width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+    font-size:20px; margin-bottom:16px;
+  }
+  .feat-card h3{font-size:17px; margin-bottom:10px; font-weight:700;}
+  .feat-card ul{list-style:none;}
+  .feat-card li{
+    font-size:13.8px; color:var(--ink-dim); padding-left:18px; position:relative; margin-bottom:8px;
+  }
+  .feat-card li::before{content:"—"; position:absolute; left:0; color:var(--ink-dimmer);}
+
+  .ic-1{background:rgba(232,176,75,0.14); color:var(--gold2);}
+  .ic-2{background:rgba(194,73,61,0.16); color:#f19488;}
+  .ic-3{background:rgba(62,207,178,0.14); color:var(--teal);}
+  .ic-4{background:rgba(160,120,255,0.16); color:#c3adff;}
+  .ic-5{background:rgba(232,176,75,0.14); color:var(--gold2);}
+  .ic-6{background:rgba(62,207,178,0.14); color:var(--teal);}
+
+  /* ---------- languages ---------- */
+  .lang-wrap{
+    display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:36px;
+  }
+  .lang-pill{
+    padding:12px 20px; border-radius:999px; background:var(--panel); border:1px solid var(--border);
+    font-size:14.5px; font-weight:600; display:flex; align-items:center; gap:10px;
+  }
+  .lang-pill .native{color:var(--gold2); font-weight:700;}
+  .lang-pill .eng{color:var(--ink-dimmer); font-size:12.5px;}
+
+  /* ---------- USP ---------- */
+  .usp-list{display:grid; gap:16px; margin-top:10px;}
+  .usp-row{
+    display:grid; grid-template-columns:36px 1fr; gap:18px;
+    padding:20px 22px; background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    align-items:start;
+  }
+  .usp-row .num{
+    width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg,var(--gold2),var(--maroon));
+    color:#1c0f08; font-weight:800; font-size:14px; display:flex; align-items:center; justify-content:center;
+  }
+  .usp-row b{font-size:15.5px;}
+  .usp-row p{font-size:14.3px; color:var(--ink-dim); margin-top:5px;}
+
+  /* ---------- how it works ---------- */
+  .steps{display:grid; gap:20px; grid-template-columns:1fr; counter-reset:step;}
+  @media(min-width:820px){ .steps{grid-template-columns:repeat(4,1fr);} }
+  .step{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:24px 20px; position:relative;
+  }
+  .step::before{
+    counter-increment:step; content:counter(step);
+    width:30px; height:30px; border-radius:50%; background:rgba(232,176,75,0.15); color:var(--gold2);
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13.5px; margin-bottom:14px;
+  }
+  .step h4{font-size:15px; margin-bottom:6px;}
+  .step p{font-size:13.5px; color:var(--ink-dim);}
+
+  /* ---------- honesty ---------- */
+  .honest{
+    background:linear-gradient(155deg, rgba(255,255,255,0.03), transparent);
+    border:1px dashed var(--border); border-radius:var(--radius); padding:30px;
+  }
+  .honest ul{list-style:none; display:grid; gap:10px; margin-top:16px;}
+  .honest li{font-size:14px; color:var(--ink-dim); padding-left:20px; position:relative;}
+  .honest li::before{content:"○"; position:absolute; left:0; color:var(--ink-dimmer); font-size:11px; top:4px;}
+
+  /* ---------- final CTA ---------- */
+  .cta-final{
+    text-align:center; padding:72px 40px; border-radius:24px; margin:20px 0 80px;
+    background:
+      radial-gradient(600px 300px at 50% 0%, rgba(232,176,75,0.18), transparent 60%),
+      linear-gradient(155deg,var(--panel2),var(--panel));
+    border:1px solid var(--border);
+  }
+  .cta-final h2{margin-bottom:14px;}
+  .cta-final p{color:var(--ink-dim); max-width:520px; margin:0 auto 30px; font-size:16px;}
+
+  footer{border-top:1px solid var(--border); padding:36px 0; }
+  .foot-row{display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between; font-size:13.5px; color:var(--ink-dimmer);}
+  .foot-links{display:flex; gap:20px;}
+  .foot-links a:hover{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="bg-grain"></div>
+
+<header>
+  <div class="wrap">
+    <nav>
+      <div class="brand"><span class="mark">∞</span> Infinity Studio</div>
+      <div class="navlinks">
+        <a href="#features">Features</a>
+        <a href="#languages">Languages</a>
+        <a href="#how">How it works</a>
+        <a href="#honest">Scope</a>
+      </div>
+      <a class="btn btn-primary" href="http://178.104.214.191:8605/" target="_blank" rel="noopener">Try Live Demo →</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div class="kicker"><span class="dot"></span> Live · CPU-only · 11 Indian languages</div>
+      <h1>One story.<br><span class="accent">Infinite cultures.</span></h1>
+      <p class="sub">
+        Infinity Studio turns a one-line idea into a fully narrated, scene-scored,
+        illustrated story — in whichever of 11 Indian languages your listener
+        reaches for. Not a word-swapped translation. The real festival, the real
+        temple, the real voice.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="http://178.104.214.191:8605/" target="_blank" rel="noopener">▶ Try Live Demo</a>
+        <a class="btn btn-ghost btn-lg" href="#features">Explore features</a>
+      </div>
+      <div class="hero-note">No signup required to explore the demo · runs entirely on CPU, no GPU needed</div>
+
+      <div class="quote-card">
+        <div class="tam">"நான் அந்த கடிதத்தை படித்துவிட்டேன்," என்று அர்ஜுன் மெதுவாகச் சொன்னான்.</div>
+        <div class="eng">"I read the letter," Arjun said quietly, in the moonlit courtyard of the Meenakshi Amman Temple.</div>
+        <div class="tag"><span class="pip"></span> Same story, rendered again in Hindi, Bengali, or any of 9 other languages — different temple, different city, same character, same feeling.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><div class="num">11</div><div class="lbl">Indian languages, each with a real culture pack</div></div>
+      <div class="stat"><div class="num">25+</div><div class="lbl">REST API endpoints</div></div>
+      <div class="stat"><div class="num">0</div><div class="lbl">GPUs required — fully CPU-only</div></div>
+      <div class="stat"><div class="num">4</div><div class="lbl">Formats from one story: audio, video, comic, choice-tree</div></div>
+    </div>
+  </div>
+
+  <section id="problem">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">The Problem</div>
+        <h2>Storytelling breaks the moment it crosses a language</h2>
+        <p>Every existing tool forces the same trade-off.</p>
+      </div>
+      <div class="compare">
+        <div class="compare-card bad">
+          <h3>🚫 Translate-and-ship</h3>
+          <ul>
+            <li>A temple becomes "a temple" — the culture goes flat</li>
+            <li>Script and story state live in the same file, so a language switch means starting over</li>
+            <li>Hand-localizing per region means a new voice cast and QA pass every single time</li>
+            <li>Cost climbs in a straight line with every language you add</li>
+          </ul>
+        </div>
+        <div class="compare-card good">
+          <h3>✓ Infinity Studio</h3>
+          <ul>
+            <li>Culture packs across 6 dimensions — real places, festivals, folklore, deities, names, and speech register per language</li>
+            <li>Plot and characters are state, not script — a language switch is a re-render, not a rewrite</li>
+            <li>Every render is scored for authenticity before it reaches a listener</li>
+            <li>One story generation, rendered fresh into any of 11 languages on demand</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Everything Inside</div>
+        <h2>Six systems working together on every story</h2>
+        <p>Not a text-to-speech demo bolted onto a chatbot — a full storytelling pipeline.</p>
+      </div>
+
+      <div class="feat-grid">
+        <div class="feat-card">
+          <div class="feat-icon ic-1">🗣️</div>
+          <h3>Core Text-to-Speech</h3>
+          <ul>
+            <li>11 languages, auto-detected from script if unspecified</li>
+            <li>Mixed-language text handled — English words inside Indic script get transliterated, not dropped</li>
+            <li>Long-form narration auto-chunked and stitched, no length cap</li>
+            <li>Self-healing synthesis — rare glitches auto-detected and retried</li>
+            <li>11 emotion/genre presets, plus auto mood detection</li>
+            <li>Streaming playback and voice cloning</li>
+          </ul>
+        </div>
+
+        <div class="feat-card">
+          <div class="feat-icon ic-2">🎵</div>
+          <h3>Cinematic Music &amp; SFX</h3>
+          <ul>
+            <li>Procedurally generated score across 11 genres — no licensing risk, nothing sampled</li>
+            <li>Scene-aware — mood re-classified chunk by chunk, cross-faded as the story shifts</li>
+            <li>Auto-ducking keeps music out of the way of speech</li>
+            <li>14 environmental sound effects layered in from the story's own description</li>
+          </ul>
+        </div>
+
+        <div class="feat-card">
+          <div class="feat-icon ic-3">✨</div>
+          <h3>AI Storytelling</h3>
+          <ul>
+            <li>Dream to Story — describe a memory or scene, get a narrated cinematic short</li>
+            <li>Branching stories with full decision lineage, not just one parent step</li>
+            <li>Character Resurrection — revive a saved character into a new setting</li>
+            <li>Personalized Villains built from a listener's real fears</li>
+            <li>Language switching — same plot, same characters, natural phrasing per language</li>
+          </ul>
+        </div>
+
+        <div class="feat-card">
+          <div class="feat-icon ic-4">🖼️</div>
+          <h3>Visuals &amp; Export</h3>
+          <ul>
+            <li>AI cover image for the story's strongest visual moment</li>
+            <li>Cover video — image + full narration muxed into a downloadable MP4</li>
+            <li>Scene storyboard — time-synced illustrations across the narration</li>
+            <li>Comic panels and a walkable choice-tree, generated from the same story</li>
+            <li>Character portrait avatars per named character</li>
+          </ul>
+        </div>
+
+        <div class="feat-card">
+          <div class="feat-icon ic-5">🎯</div>
+          <h3>Quality, Checked Not Assumed</h3>
+          <ul>
+            <li>Every story scored 0–100 on phrasing, tone, cultural accuracy, and emotional delivery</li>
+            <li>A low score triggers one automatic rewrite targeting the weak axes</li>
+            <li>Anything still weak stays visible in a review backlog — never ships silently</li>
+            <li>Culture packs are editable and persisted — tune a language's places or festivals without a redeploy</li>
+          </ul>
+        </div>
+
+        <div class="feat-card">
+          <div class="feat-icon ic-6">⚙️</div>
+          <h3>Built for Production</h3>
+          <ul>
+            <li>CPU-only inference — no GPU cost to run at scale</li>
+            <li>Persistent storage — every story and character saved and reusable</li>
+            <li>Live <code>/config</code> endpoint — runtime settings straight from the running process</li>
+            <li>API key auth, rate limiting, health &amp; metrics endpoints</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="languages">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Reach</div>
+        <h2>Hindi alone outnumbers every Romance language combined</h2>
+        <p>It's still treated as an afterthought. Here, all 11 get a real culture pack — not a shared script with words swapped out.</p>
+      </div>
+      <div class="lang-wrap">
+        <div class="lang-pill"><span class="native">தமிழ்</span><span class="eng">Tamil</span></div>
+        <div class="lang-pill"><span class="native">हिन्दी</span><span class="eng">Hindi</span></div>
+        <div class="lang-pill"><span class="native">తెలుగు</span><span class="eng">Telugu</span></div>
+        <div class="lang-pill"><span class="native">മലയാളം</span><span class="eng">Malayalam</span></div>
+        <div class="lang-pill"><span class="native">ಕನ್ನಡ</span><span class="eng">Kannada</span></div>
+        <div class="lang-pill"><span class="native">मराठी</span><span class="eng">Marathi</span></div>
+        <div class="lang-pill"><span class="native">ગુજરાતી</span><span class="eng">Gujarati</span></div>
+        <div class="lang-pill"><span class="native">বাংলা</span><span class="eng">Bengali</span></div>
+        <div class="lang-pill"><span class="native">ਪੰਜਾਬੀ</span><span class="eng">Punjabi</span></div>
+        <div class="lang-pill"><span class="native">ଓଡ଼ିଆ</span><span class="eng">Odia</span></div>
+        <div class="lang-pill"><span class="native">অসমীয়া</span><span class="eng">Assamese</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="usp">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Why It's Different</div>
+        <h2>What you won't find in a standard TTS tool</h2>
+      </div>
+      <div class="usp-list">
+        <div class="usp-row"><div class="num">1</div><div><b>Characters persist.</b><p>Named characters from any generated story are saved with their personality and backstory, ready to be pulled into a brand-new setting later.</p></div></div>
+        <div class="usp-row"><div class="num">2</div><div><b>Stories branch, with real history.</b><p>Re-fork any saved story from a changed decision — a branch-of-a-branch is generated aware of its full lineage, not just the one step directly above it.</p></div></div>
+        <div class="usp-row"><div class="num">3</div><div><b>Music follows the scene, not the whole story.</b><p>Verified to correctly shift from calm → horror → action as a story moves through its beats, not one flat mood throughout.</p></div></div>
+        <div class="usp-row"><div class="num">4</div><div><b>Stories switch language — not just get translated.</b><p>Same plot, same characters, natural phrasing and names for that language, switchable later without losing the story's identity.</p></div></div>
+        <div class="usp-row"><div class="num">5</div><div><b>One story, four formats.</b><p>Narrated audio, scene-illustrated playback, comic panels, or an MP4 slideshow — all from data this service already generates, no re-authoring.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">How It Works</div>
+        <h2>From one line to a finished, scored story</h2>
+      </div>
+      <div class="steps">
+        <div class="step"><h4>Describe it</h4><p>A dream, memory, or one-line scene — in plain English or any supported language.</p></div>
+        <div class="step"><h4>AI writes &amp; scores it</h4><p>A cinematic short is generated with cultural grounding, then scored on phrasing, tone, and accuracy — weak drafts get one automatic rewrite.</p></div>
+        <div class="step"><h4>Music, voice &amp; visuals render</h4><p>Scene-aware score and SFX, a fitting narrator voice per character, and optional cover art or a storyboard.</p></div>
+        <div class="step"><h4>Listen, branch, or export</h4><p>Play it back, fork a new path from any decision, switch its language, or export as video, comic, or choice-tree.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="honest">
+    <div class="wrap">
+      <div class="honest">
+        <div class="eyebrow" style="margin-bottom:4px;">Built Honestly</div>
+        <h2 style="font-size:22px;">What this deliberately doesn't claim</h2>
+        <ul>
+          <li>Cover video is a static image held for the full narration, muxed via ffmpeg — not AI-generated moving video.</li>
+          <li>Quality scoring judges the generated text; nothing here evaluates the synthesized audio's pronunciation.</li>
+          <li>One fixed voice per language from the base engine — true multi-voice casting needs a different, heavier backend.</li>
+          <li>Not sold as "undetectable as AI" — it's a synthetic voice, just a clearer, more produced-sounding one.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="cta-final">
+      <h2>Hear your story in your own culture's voice</h2>
+      <p>No signup wall on the demo — describe a scene and see the whole pipeline run, live, on CPU.</p>
+      <a class="btn btn-primary btn-lg" href="http://178.104.214.191:8605/" target="_blank" rel="noopener">▶ Try Live Demo</a>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap foot-row">
+    <div>© 2026 Infinity Studio — Cultural Story Operating System</div>
+    <div class="foot-links">
+      <a href="http://178.104.214.191:8605/" target="_blank" rel="noopener">Live Demo</a>
+      <a href="http://178.104.214.191:8604/health" target="_blank" rel="noopener">API Status</a>
+      <a href="https://github.com/DeepakVijayasarathi/voiceai" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
