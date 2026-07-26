@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Infinity Studio — Cultural Story Operating System</title>
 <meta name="description" content="AI storytelling and text-to-speech across 11 Indian languages — real culture, not translation. CPU-only, no GPU required.">
+<link rel="icon" type="image/png" href="assets/logo-mark.png">
 <style>
   :root{
     --grad-1:#1fc8d8; --grad-2:#6a5ae0; --grad-3:#b23fd6; --grad-4:#ec3a83; --grad-5:#ff8a3d;
@@ -44,9 +45,8 @@
   nav{display:flex; align-items:center; justify-content:space-between; padding:16px 0;}
   .brand{display:flex; align-items:center; gap:11px;}
   .brand .mark{
-    width:38px; height:38px; border-radius:10px; background:var(--gradient);
-    box-shadow:0 2px 8px rgba(80,60,180,.25);
-    display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:17px;
+    width:42px; height:42px; object-fit:contain;
+    filter:drop-shadow(0 2px 6px rgba(80,60,180,.25));
   }
   .brand .name{font-weight:800; font-size:16.5px; letter-spacing:0.2px;
     background:var(--gradient); -webkit-background-clip:text; background-clip:text; color:transparent;
@@ -69,7 +69,9 @@
   .btn-lg{padding:15px 30px; font-size:16px;}
 
   /* ---------- hero ---------- */
-  .hero{padding:90px 0 60px; text-align:center;}
+  .hero{padding:56px 0 60px; text-align:center;}
+  .hero-logo{ width:220px; margin:0 auto 20px; display:block; }
+  @media(min-width:640px){ .hero-logo{ width:280px; } }
   .kicker{
     display:inline-flex; align-items:center; gap:8px;
     padding:7px 16px; border-radius:999px; font-size:13px; font-weight:700;
@@ -232,7 +234,7 @@
   <div class="wrap">
     <nav>
       <div class="brand">
-        <span class="mark">∞</span>
+        <img class="mark" src="assets/logo-mark.png" alt="Infinity Studio">
         <div>
           <div class="name">INFINITY STUDIO</div>
           <div class="sub">Cultural Story OS</div>
@@ -253,13 +255,16 @@
 <main>
   <section class="hero">
     <div class="wrap">
+      <img class="hero-logo" src="assets/logo-wide.png" alt="Infinity Studio">
       <div class="kicker"><span class="dot"></span> Live · CPU-only · 11 Indian languages</div>
       <h1>One story.<br><span class="accent">Infinite cultures.</span></h1>
       <p class="sub">
-        Infinity Studio turns a one-line idea into a fully narrated, scene-scored,
-        illustrated story — in whichever of 11 Indian languages your listener
-        reaches for. Not a word-swapped translation. The real festival, the real
-        temple, the real voice.
+        Think about the last time a "dubbed" story actually felt like it was made
+        for you — not just translated at you. That almost never happens, because
+        most tools swap the words and leave the culture behind. Infinity Studio
+        writes, narrates, and scores your story fresh for whoever's listening —
+        same characters, same heart, but their own festival, their own temple,
+        their own voice.
       </p>
       <div class="hero-cta">
         <a class="btn btn-primary btn-lg" href="http://178.104.214.191:8605/" target="_blank" rel="noopener">▶ Try Live Demo</a>
@@ -332,7 +337,15 @@
       <div class="section-head">
         <div class="eyebrow">The Problem</div>
         <h2>Storytelling breaks the moment it crosses a language</h2>
-        <p>Every existing tool forces the same trade-off.</p>
+        <p>
+          Picture your grandmother in Madurai and your cousin in Kolkata, listening
+          to the same story. Today, one of them gets the real thing and the other
+          gets a translation — the temple in the scene quietly becomes "a temple,"
+          the festival becomes "a celebration," and it stops feeling like it was
+          made for them. Not broken, exactly. Just foreign. That's the actual gap
+          — not a missing feature, a missing feeling — and every existing tool
+          forces the same trade-off to close it.
+        </p>
       </div>
       <div class="compare">
         <div class="compare-card bad">
