@@ -101,12 +101,29 @@ def _generate_image_from_prompt(prompt: str) -> bytes:
         raise ImageGenError(f"Image response was not valid base64: {e}")
 
 
-def generate_story_image(story_text: str) -> bytes:
+def generate_story_image(story_text: str, title: str | None = None) -> bytes:
     """Returns PNG bytes depicting the story's strongest visual moment.
     Raises ImageGenError on failure (missing key, network error,
     unexpected response) - this is opt-in, so the caller should see the
-    failure rather than have it silently dropped."""
+    failure rather than have it silently dropped.
+
+    When `title` is given, the prompt asks the image model to bake it in
+    as poster-style typography (see the instruction appended below) -
+    like a real movie/audiobook cover, not just an illustration. This is
+    best-effort: image-model text rendering, especially for non-Latin
+    Indic scripts, is imprecise and sometimes garbled, unlike a
+    guaranteed-legible HTML/CSS overlay. That's why the UI still draws
+    the same title as a scrim over the image itself (see ui/index.html's
+    CoverArt component) regardless of how this turns out - this is a
+    visual flourish on top of that guarantee, not a replacement for it."""
     visual_prompt = _derive_visual_prompt(story_text)
+    if title:
+        visual_prompt = (
+            f"{visual_prompt} Compose it like a movie/audiobook cover: "
+            f"near the bottom, render the exact title text \"{title}\" in "
+            f"bold, elegant poster typography (in its own script) that "
+            f"fits the scene's mood and lighting."
+        )
     return _generate_image_from_prompt(visual_prompt)
 
 

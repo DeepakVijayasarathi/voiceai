@@ -82,6 +82,63 @@ def test_list_stories_reports_has_audio(fresh_db):
     assert stories[without_audio]["has_audio"] == 0
 
 
+def test_delete_story_removes_the_story(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    assert fresh_db.delete_story(story_id) is True
+    assert fresh_db.get_story(story_id) is None
+
+
+def test_delete_story_missing_story_returns_false(fresh_db):
+    assert fresh_db.delete_story(99999) is False
+
+
+def test_delete_story_detaches_branches_instead_of_cascading(fresh_db):
+    root_id = fresh_db.save_story(title="Root", language="hin", text="root text")
+    branch_id = fresh_db.save_story(
+        title="Branch", language="hin", text="branch text",
+        parent_story_id=root_id, branch_note="a fork",
+    )
+    fresh_db.delete_story(root_id)
+    branch = fresh_db.get_story(branch_id)
+    assert branch is not None
+    assert branch["parent_story_id"] is None
+
+
+def test_delete_story_detaches_language_variants(fresh_db):
+    root_id = fresh_db.save_story(title="Root", language="hin", text="root text")
+    variant_id = fresh_db.save_story(
+        title="Variant", language="tam", text="variant text", variant_of_story_id=root_id,
+    )
+    fresh_db.delete_story(root_id)
+    variant = fresh_db.get_story(variant_id)
+    assert variant is not None
+    assert variant["variant_of_story_id"] is None
+
+
+def test_delete_story_detaches_but_keeps_characters(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    char_id = fresh_db.save_character(name="Vikram", personality="brave", backstory="a detective", language="hin", origin_story_id=story_id)
+    fresh_db.link_character_to_story(story_id, char_id)
+
+    fresh_db.delete_story(story_id)
+
+    remaining = fresh_db.get_character(char_id)
+    assert remaining is not None
+    assert remaining["origin_story_id"] is None
+    assert fresh_db.get_characters_for_story(story_id) == []
+
+
+def test_delete_story_removes_scene_images_and_quality_entries(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    fresh_db.save_scene_image(story_id, 0, 0.0, 3.0, "excerpt", "prompt", "/static/images/1/0.png")
+    fresh_db.save_quality_entry(story_id, {"overall": 40, "scored": True}, rewritten=False)
+
+    fresh_db.delete_story(story_id)
+
+    assert fresh_db.get_images_for_story(story_id) == []
+    assert all(entry["story_id"] != story_id for entry in fresh_db.list_quality_backlog())
+
+
 def test_save_and_get_character_with_voice_profile(fresh_db):
     story_id = fresh_db.save_story(title="T", language="hin", text="text")
     char_id = fresh_db.save_character(
