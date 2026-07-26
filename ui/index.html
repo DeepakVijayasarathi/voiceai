@@ -110,6 +110,23 @@
   .inline-form { margin-top: 10px; padding: 10px; background: var(--bg); border-radius: 8px; display: none; }
   .inline-form textarea { min-height: 60px; }
   .inline-form button { margin-top: 8px; }
+
+  .list-thumb { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+  .list-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .list-actions button { padding: 6px 10px; }
+  .list-btn-secondary { background: transparent !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
+  .expand-text { margin-top: 8px; padding: 10px; background: var(--bg); border-radius: 8px; font-size: 13px;
+    line-height: 1.6; display: none; max-height: 200px; overflow-y: auto; }
+  .expand-media { margin-top: 8px; display: none; }
+  .expand-media img, .expand-media video { width: 100%; border-radius: 8px; }
+
+  .config-section { margin-top: 14px; }
+  .config-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+    margin: 0 0 8px; }
+  .config-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 4px; }
+  .config-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .config-table td:first-child { color: var(--muted); white-space: nowrap; width: 40%; }
+  .config-table td:last-child { word-break: break-word; font-family: ui-monospace, Consolas, monospace; }
 </style>
 </head>
 <body>
@@ -291,6 +308,14 @@
       <input type="password" id="apiKey" placeholder="x-api-key">
       <div class="hint">Stored only in this browser's local storage, sent as the x-api-key header.</div>
     </div>
+  </details>
+
+  <details id="advancedDetails">
+    <summary>Advanced: live system configuration</summary>
+    <div class="hint" style="margin-top: 8px;">Read directly from the running service via GET /config - every tunable that actually shapes behavior (chunk sizes, BGM/SFX levels and duck amounts, all 7 voice profiles, emotion presets, which languages have cultural grounding). Secrets are reported as set/unset only, never as values.</div>
+    <button id="loadConfigBtn" class="list-btn-secondary" style="margin-top: 10px; width: auto; padding: 8px 14px;">Load config</button>
+    <div id="configStatus" class="status"></div>
+    <div id="configOutput"></div>
   </details>
 </div>
 
@@ -728,13 +753,65 @@ async function loadStories() {
       const row = document.createElement("div");
       row.className = "list-row";
       const branchNote = story.parent_story_id ? ` · branched from #${story.parent_story_id}` : "";
+      const thumb = story.has_image ? `<img class="list-thumb" src="${API_BASE}/stories/${story.id}/image" alt="">` : "";
       row.innerHTML = `
+        ${thumb}
         <div class="list-main">
           <div class="list-title">#${story.id}: ${story.title || "(untitled)"}</div>
           <div class="list-sub">${story.language}${branchNote}</div>
         </div>
-        <button data-action="branch" data-id="${story.id}">Branch</button>
+        <div class="list-actions">
+          <button class="list-btn-secondary" data-action="text">Text</button>
+          ${story.has_image ? '<button class="list-btn-secondary" data-action="image">Image</button>' : ""}
+          ${story.has_audio ? '<button class="list-btn-secondary" data-action="video">Video</button>' : ""}
+          <button data-action="branch">Branch</button>
+        </div>
       `;
+      const textDiv = document.createElement("div");
+      textDiv.className = "expand-text";
+      const mediaDiv = document.createElement("div");
+      mediaDiv.className = "expand-media";
+      row.querySelector('[data-action="text"]').addEventListener("click", async () => {
+        if (textDiv.style.display === "block") { textDiv.style.display = "none"; return; }
+        mediaDiv.style.display = "none";
+        if (!textDiv.dataset.loaded) {
+          textDiv.textContent = "Loading...";
+          textDiv.style.display = "block";
+          try {
+            const r = await fetch(`${API_BASE}/stories/${story.id}`, { headers: authHeaders() });
+            const d = await r.json();
+            textDiv.textContent = d.text || "(no text)";
+            textDiv.dataset.loaded = "1";
+          } catch (err) {
+            textDiv.textContent = `Failed to load: ${err.message || err}`;
+          }
+        } else {
+          textDiv.style.display = "block";
+        }
+      });
+      const imageBtn = row.querySelector('[data-action="image"]');
+      if (imageBtn) {
+        imageBtn.addEventListener("click", () => {
+          const isShowing = mediaDiv.style.display === "block" && mediaDiv.dataset.kind === "image";
+          if (isShowing) { mediaDiv.style.display = "none"; return; }
+          textDiv.style.display = "none";
+          mediaDiv.innerHTML = `<img src="${API_BASE}/stories/${story.id}/image" alt="">`;
+          mediaDiv.dataset.kind = "image";
+          mediaDiv.style.display = "block";
+        });
+      }
+      const videoBtn = row.querySelector('[data-action="video"]');
+      if (videoBtn) {
+        videoBtn.addEventListener("click", () => {
+          const isShowing = mediaDiv.style.display === "block" && mediaDiv.dataset.kind === "video";
+          if (isShowing) { mediaDiv.querySelector("video")?.pause(); mediaDiv.style.display = "none"; return; }
+          textDiv.style.display = "none";
+          mediaDiv.innerHTML = `<video controls src="${API_BASE}/stories/${story.id}/video"></video>`;
+          mediaDiv.dataset.kind = "video";
+          mediaDiv.style.display = "block";
+          mediaDiv.querySelector("video").play().catch(() => {});
+        });
+      }
       const form = document.createElement("div");
       form.className = "inline-form";
       form.innerHTML = `
@@ -742,8 +819,7 @@ async function loadStories() {
         <button>Generate branch</button>
         <div class="status"></div>
       `;
-      row.after(form);
-      row.querySelector("button").addEventListener("click", () => {
+      row.querySelector('[data-action="branch"]').addEventListener("click", () => {
         form.style.display = form.style.display === "block" ? "none" : "block";
       });
       const branchTextarea = form.querySelector("textarea");
@@ -782,6 +858,8 @@ async function loadStories() {
         }
       });
       listEl.appendChild(row);
+      listEl.appendChild(mediaDiv);
+      listEl.appendChild(textDiv);
       listEl.appendChild(form);
     }
   } catch (err) {
@@ -817,7 +895,6 @@ async function loadCharacters() {
         <button>Generate revival</button>
         <div class="status"></div>
       `;
-      row.after(form);
       row.querySelector("button").addEventListener("click", () => {
         form.style.display = form.style.display === "block" ? "none" : "block";
       });
@@ -866,6 +943,42 @@ async function loadCharacters() {
 
 $("refreshStoriesBtn").addEventListener("click", () => { loadStories(); loadCharacters(); });
 document.querySelector('[data-subpane="browseSub"]').addEventListener("click", () => { loadStories(); loadCharacters(); }, { once: true });
+
+function renderConfigValue(value) {
+  if (value === null || value === undefined) return "<em>null</em>";
+  if (Array.isArray(value)) return value.join(", ") || "<em>(none)</em>";
+  if (typeof value === "object") {
+    const rows = Object.entries(value).map(([k, v]) => `<tr><td>${k}</td><td>${renderConfigValue(v)}</td></tr>`).join("");
+    return `<table class="config-table">${rows}</table>`;
+  }
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
+}
+
+function renderConfigSection(title, obj) {
+  const rows = Object.entries(obj).map(([k, v]) => `<tr><td>${k}</td><td>${renderConfigValue(v)}</td></tr>`).join("");
+  return `<div class="config-section"><h3>${title}</h3><table class="config-table">${rows}</table></div>`;
+}
+
+$("loadConfigBtn").addEventListener("click", async () => {
+  const statusEl = $("configStatus");
+  const output = $("configOutput");
+  statusEl.className = "status";
+  statusEl.textContent = "Loading...";
+  output.innerHTML = "";
+  try {
+    const resp = await fetch(API_BASE + "/config");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const cfg = await resp.json();
+    const titles = { env: "Environment", synthesis: "Synthesis", bgm_sfx_mix: "BGM / SFX mix", voice_profiles: "Voice profiles", story_gen: "Story generation" };
+    output.innerHTML = Object.entries(cfg).map(([key, val]) => renderConfigSection(titles[key] || key, val)).join("");
+    statusEl.className = "status ok";
+    statusEl.textContent = "Loaded.";
+  } catch (err) {
+    statusEl.className = "status error";
+    statusEl.textContent = err.message || String(err);
+  }
+});
 </script>
 </body>
 </html>
