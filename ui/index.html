@@ -636,11 +636,13 @@ function NarratePanel({ apiKey }) {
   const [bgm, setBgm] = useState(false);
   const [withImages, setWithImages] = useState(true);
   const [maxImages, setMaxImages] = useState(1);
+  const [cultureAdapt, setCultureAdapt] = useState(false);
   const [step, setStep] = useState("compose"); // compose | preview | generating | result
   const [status, setStatus] = useState({ text: "", cls: "" });
   const [audioUrl, setAudioUrl] = useState(null);
   const [meta, setMeta] = useState("");
   const [resolvedEmotion, setResolvedEmotion] = useState(null);
+  const [adaptedText, setAdaptedText] = useState(null);
   const [images, setImages] = useState([]);
   const [currentImage, setCurrentImage] = useState(null);
   const audioRef = useRef(null);
@@ -659,10 +661,13 @@ function NarratePanel({ apiKey }) {
 
   const generate = async () => {
     setStep("generating");
-    setImages([]); setCurrentImage(null);
+    setImages([]); setCurrentImage(null); setAdaptedText(null);
     const t0 = performance.now();
     try {
-      const body = { text, speed: parseFloat(speed), bgm, images: withImages, max_images: parseInt(maxImages, 10) || 4 };
+      const body = {
+        text, speed: parseFloat(speed), bgm, images: withImages,
+        max_images: parseInt(maxImages, 10) || 4, culture_adapt: cultureAdapt,
+      };
       if (language) body.language = language;
       if (emotion) body.emotion = emotion;
       const resp = await fetch(API_BASE + "/tts", {
@@ -676,6 +681,10 @@ function NarratePanel({ apiKey }) {
       const storyId = resp.headers.get("X-Story-Id");
       const imageCount = parseInt(resp.headers.get("X-Image-Count") || "0", 10);
       setResolvedEmotion(resolvedEm && resolvedEm !== "none" ? resolvedEm : null);
+      if (resp.headers.get("X-Culture-Adapted") === "true") {
+        const adaptedB64 = resp.headers.get("X-Adapted-Text-B64");
+        if (adaptedB64) setAdaptedText(b64ToUtf8(adaptedB64));
+      }
 
       const blob = await resp.blob();
       setAudioUrl(URL.createObjectURL(blob));
@@ -700,7 +709,7 @@ function NarratePanel({ apiKey }) {
 
   const startOver = () => {
     setStep("compose");
-    setAudioUrl(null); setImages([]); setCurrentImage(null); setStatus({ text: "", cls: "" });
+    setAudioUrl(null); setImages([]); setCurrentImage(null); setAdaptedText(null); setStatus({ text: "", cls: "" });
   };
 
   const emotionInfo = EMOTION_INFO[emotion] || EMOTION_INFO.neutral;
@@ -746,6 +755,8 @@ function NarratePanel({ apiKey }) {
               <input type="number" min="1" max="6" value={maxImages} onChange={(e) => setMaxImages(e.target.value)} />
             </Field>
           )}
+          <ToggleOption id="narrate-culture-adapt" icon="globe" checked={cultureAdapt} onChange={setCultureAdapt}
+            label="Adapt through the culture pack before narrating (off by default - narrates your exact text as typed; on lightly localizes generic references)" />
           <button className="btn" onClick={goToPreview}>Review before generating</button>
           <div className={`status ${status.cls}`}>{status.text}</div>
         </React.Fragment>
@@ -787,6 +798,13 @@ function NarratePanel({ apiKey }) {
               <div className="pr-value">{withImages ? "On" : "Off"}</div>
             </div>
             <div className="preview-row">
+              <div>
+                <div className="pr-label">Culture adaptation</div>
+                <div className="pr-desc">{cultureAdapt ? "Text may be lightly localized before narrating" : "Narrated exactly as typed"}</div>
+              </div>
+              <div className="pr-value">{cultureAdapt ? "On" : "Off"}</div>
+            </div>
+            <div className="preview-row">
               <div><div className="pr-label">Speed</div></div>
               <div className="pr-value">{parseFloat(speed).toFixed(2)}x</div>
             </div>
@@ -808,13 +826,20 @@ function NarratePanel({ apiKey }) {
         <React.Fragment>
           <div className={`status ${status.cls}`}>{status.text}</div>
           {resolvedEmotion && <span className="badge neutral">✦ AI detected mood: {resolvedEmotion}</span>}
+          {adaptedText && <span className="badge neutral">✦ Culturally adapted before narrating</span>}
           {currentImage && (
-            <CoverArt src={API_BASE + currentImage} kicker="Now narrating" title={truncateTitle(text, 90)} />
+            <CoverArt src={API_BASE + currentImage} kicker="Now narrating" title={truncateTitle(adaptedText || text, 90)} />
           )}
           <AudioPlayerCard
             audioUrl={audioUrl} audioRef={audioRef} onTimeUpdate={onTimeUpdate}
-            thumbnailUrl={currentImage ? API_BASE + currentImage : null} icon="narrate" title={truncateTitle(text)}
+            thumbnailUrl={currentImage ? API_BASE + currentImage : null} icon="narrate" title={truncateTitle(adaptedText || text)}
           />
+          {adaptedText && (
+            <div className="story-output">
+              <div className="label">What was actually narrated (culturally adapted)</div>
+              {adaptedText}
+            </div>
+          )}
           {meta && <div className="meta">{meta}</div>}
           <button className="btn ghost" onClick={startOver} style={{ marginTop: 14 }}>Start over</button>
         </React.Fragment>

@@ -277,6 +277,36 @@ def generate_story(description: str, language: str) -> str:
     return story[:950]  # hard safety margin under MAX_TEXT_LEN
 
 
+def culturally_adapt_text(text: str, language: str) -> str:
+    """Lightly rewrites `text` to feel more culturally authentic for
+    `language` - same language, same meaning and length, generic or
+    placeholder references swapped for real regional ones where that
+    genuinely fits. Distinct from adapt_story_language, which retells a
+    story into a DIFFERENT language; this stays in the same language.
+    Meant for Audio Studio's raw, arbitrary user text (opt-in via
+    TTSRequest.culture_adapt) - which may not be a story at all, e.g. a
+    single plain sentence - so the instruction is deliberately
+    conservative: preserve structure, don't invent a scene that isn't
+    there, and leave text unchanged if it has no natural opening for
+    this. Raises StoryGenError on failure - callers should treat this as
+    best-effort and fall back to the original text rather than fail the
+    whole narration over it (see app.py's /tts handler)."""
+    lang_name = LANGUAGE_NAMES.get(language, language)
+    system_prompt = (
+        f"The following text is already written in {lang_name}. Lightly "
+        f"revise it to feel more culturally authentic and local, without "
+        f"changing its meaning, length, or overall structure: swap any "
+        f"vague or generic place/festival/name references for real, "
+        f"specific {lang_name}-region ones where that genuinely fits - do "
+        f"not invent a scene or setting that isn't already there, and do "
+        f"not add sentences. If the text has no natural opening for this "
+        f"(a plain factual or short remark, for instance), return it "
+        f"completely unchanged. Output only the revised text itself - no "
+        f"notes, no markdown, no quotation marks.{_cultural_clause(language)}"
+    )
+    return _chat_completion(system_prompt, text, max_tokens=600, temperature=0.6)
+
+
 def extract_characters(story_text: str, language: str) -> list[dict]:
     """Identifies named characters in a story and returns a short
     personality/backstory summary for each, plus a suggested voice_profile

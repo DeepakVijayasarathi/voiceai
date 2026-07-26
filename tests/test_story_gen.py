@@ -136,6 +136,33 @@ def test_adapt_story_language_targets_correct_language_names(monkeypatch):
     assert captured["user_content"] == "मूल हिंदी कहानी"
 
 
+def test_culturally_adapt_text_stays_in_the_same_language(monkeypatch):
+    captured = {}
+
+    def _fake_chat_completion(system_prompt, user_content, **kwargs):
+        captured["system_prompt"] = system_prompt
+        captured["user_content"] = user_content
+        return "revised text"
+
+    monkeypatch.setattr(story_gen, "_chat_completion", _fake_chat_completion)
+    result = story_gen.culturally_adapt_text("original text", "tam")
+    assert result == "revised text"
+    assert "Tamil" in captured["system_prompt"]
+    assert captured["user_content"] == "original text"
+    # Same-language framing, not adapt_story_language's "different language" one.
+    assert "already written in Tamil" in captured["system_prompt"]
+
+
+def test_culturally_adapt_text_includes_cultural_clause(monkeypatch, fresh_db):
+    captured = {}
+    monkeypatch.setattr(
+        story_gen, "_chat_completion",
+        lambda sp, uc, **k: captured.setdefault("sp", sp) or "x",
+    )
+    story_gen.culturally_adapt_text("some text", "tam")
+    assert "Madurai" in captured["sp"] or "Meenakshi" in captured["sp"]
+
+
 def test_get_effective_cultural_context_returns_default_without_override(fresh_db):
     ctx = get_effective_cultural_context("tam")
     assert ctx == LANGUAGE_CULTURAL_CONTEXT["tam"]

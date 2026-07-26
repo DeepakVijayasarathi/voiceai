@@ -60,6 +60,7 @@ from story_gen import (
     TARGET_CHAR_BUDGET,
     StoryGenError,
     adapt_story_language,
+    culturally_adapt_text,
     extract_characters,
     generate_continuation,
     generate_story,
@@ -171,6 +172,7 @@ class TTSRequest(BaseModel):
     speaker: str | None = Field(default=None, description="Reserved, unused - use POST /clone for voice cloning instead.")
     images: bool = Field(default=False, description="Also generate scene illustrations via OpenAI Images, mapped to approximate time ranges - see GET /stories/{id}/images. Saves this text as a story (title = first 80 chars) so images have somewhere to attach. Off by default: adds real per-image latency and OpenAI cost.")
     max_images: int = Field(default=4, ge=1, le=6, description="Max number of scene images to generate when images=true.")
+    culture_adapt: bool = Field(default=False, description="Off by default: this text is narrated exactly as typed, no rewriting. When true, it's first lightly revised through the target language's culture pack (real places/festivals/names swapped in where it genuinely fits, same meaning/length) before narration - best-effort, falls back to the original text on failure rather than failing the request.")
 
 
 class CloneRequest(BaseModel):
@@ -678,6 +680,17 @@ def tts(req: TTSRequest, x_api_key: str | None = Header(default=None)):
         raise HTTPException(status_code=400, detail="'speaker' is not used by /tts - use POST /clone for voice cloning instead.")
 
     lang = _resolve_language(req.text, req.language)
+
+    culture_adapted = False
+    if req.culture_adapt:
+        try:
+            adapted = culturally_adapt_text(req.text, lang)
+            if adapted.strip() and adapted.strip() != req.text.strip():
+                req.text = adapted
+                culture_adapted = True
+        except StoryGenError as e:
+            logger.warning("culture_adapt failed for lang=%s (non-fatal, narrating original text): %s", lang, e)
+
     emotion, speed, noise_scale = _resolve_emotion_and_speed(req)
 
     _metrics["requests_total"] += 1
@@ -693,7 +706,9 @@ def tts(req: TTSRequest, x_api_key: str | None = Header(default=None)):
         raise HTTPException(status_code=500, detail="Speech generation failed")
     _metrics["synth_seconds_total"] += time.time() - t0
 
-    headers = {"X-Resolved-Emotion": emotion or "none"}
+    headers = {"X-Resolved-Emotion": emotion or "none", "X-Culture-Adapted": str(culture_adapted).lower()}
+    if culture_adapted:
+        headers["X-Adapted-Text-B64"] = base64.b64encode(req.text.encode("utf-8")).decode("ascii")
     if req.images:
         story_id = db.save_story(title=req.text[:80], language=lang, text=req.text)
         image_count = _maybe_generate_scene_images(
