@@ -20,8 +20,12 @@ server {
 
         proxy_pass http://127.0.0.1:8503;
         proxy_set_header Host $host;
-        proxy_read_timeout 30s;
-        proxy_send_timeout 30s;
+        # 30s was too short once /clone (30-70s+) and /dream-to-story
+        # with visual/video=true (image generation + audio synthesis,
+        # 60-90s+ combined) existed - both were hitting a 504 here even
+        # though the backend eventually completed successfully.
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
         proxy_connect_timeout 10s;
     }
 }
