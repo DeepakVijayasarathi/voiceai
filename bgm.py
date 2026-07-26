@@ -27,59 +27,76 @@ from sfx import tile_sfx_to_length
 # Hz), tempo (beats/sec), background-noise level, brightness (overall
 # gain multiplier for the tonal layers), whether to add an arpeggio,
 # detune spread (wider = more dissonant/uneasy beating between voices),
-# reverb wetness (0-1, spaciousness), and sub_bass (0-1, how much
-# low-end "weight" to layer in - a real film-score technique: a felt-
-# more-than-heard low sine under a dramatic chord adds cinematic gravity
-# that a pad+rhythm alone doesn't have. Kept at 0 for lighter genres
-# where added weight would just read as muddy, not dramatic).
+# reverb wetness (0-1, spaciousness), sub_bass (0-1, how much low-end
+# "weight" to layer in - a real film-score technique: a felt-more-than-
+# heard low sine under a dramatic chord adds cinematic gravity that a
+# pad+rhythm alone doesn't have - kept at 0 for lighter genres where
+# added weight would just read as muddy, not dramatic), melody (a short
+# semitone-offset motif from each chord's root, played an octave+ above
+# the pad - this is what actually makes procedural music sound composed
+# rather than ambient texture: a distinct, recognizable hook per genre,
+# not just harmony underneath narration), and staccato (short plucked
+# notes for energetic/playful genres vs sustained legato for lyrical/
+# meditative ones).
 GENRES = {
     "neutral": dict(
         chords=[[130.81, 164.81, 196.00], [146.83, 174.61, 220.00]],  # C -> Dm
         tempo=1.0, noise=0.012, brightness=1.0, arp=False, detune=0.001, reverb=0.20, sub_bass=0.0,
+        melody=[0, 3, 7, 3], staccato=False,
     ),
     "happy": dict(
         chords=[[261.63, 329.63, 392.00], [293.66, 369.99, 440.00], [329.63, 415.30, 493.88]],  # C -> D -> E
         tempo=2.2, noise=0.010, brightness=1.5, arp=True, detune=0.001, reverb=0.15, sub_bass=0.0,
+        melody=[0, 4, 7, 9], staccato=True,
     ),
     "sad": dict(
         chords=[[220.00, 261.63, 329.63], [196.00, 233.08, 293.66]],  # Am -> Gm
         tempo=0.7, noise=0.018, brightness=0.65, arp=False, detune=0.002, reverb=0.35, sub_bass=0.15,
+        melody=[0, -1, -3, -5], staccato=False,
     ),
     "excited": dict(
         chords=[[293.66, 369.99, 440.00], [329.63, 415.30, 493.88], [349.23, 440.00, 523.25]],  # D -> E -> F
         tempo=3.0, noise=0.014, brightness=1.7, arp=True, detune=0.001, reverb=0.15, sub_bass=0.35,
+        melody=[0, 4, 7, 12], staccato=True,
     ),
     "calm": dict(
         chords=[[130.81, 196.00], [146.83, 220.00]],  # root+fifth only
         tempo=0.5, noise=0.008, brightness=0.55, arp=False, detune=0.001, reverb=0.30, sub_bass=0.0,
+        melody=[0, 5, 7, 5], staccato=False,
     ),
     "horror": dict(
         # Tritone + minor 2nd clusters - intentionally dissonant.
         chords=[[110.00, 155.56, 207.65], [98.00, 138.59, 185.00]],  # A-Eb-Ab, G-C#-F#
         tempo=0.3, noise=0.030, brightness=0.9, arp=False, detune=0.012, reverb=0.55, sub_bass=0.85,
+        melody=[0, 1, 6, 1], staccato=False,
     ),
     "romance": dict(
         # Major 7th chords for a warm, lush character.
         chords=[[261.63, 329.63, 392.00, 493.88], [174.61, 220.00, 261.63, 329.63]],  # Cmaj7 -> Fmaj7
         tempo=0.6, noise=0.008, brightness=1.1, arp=False, detune=0.0015, reverb=0.40, sub_bass=0.1,
+        melody=[0, 4, 7, 11], staccato=False,
     ),
     "action": dict(
         chords=[[293.66, 349.23, 440.00], [220.00, 261.63, 329.63]],  # Dm -> Am
         tempo=3.5, noise=0.016, brightness=1.6, arp=True, detune=0.001, reverb=0.12, sub_bass=0.7,
+        melody=[0, 0, 3, 5], staccato=True,
     ),
     "comedy": dict(
         chords=[[261.63, 329.63, 392.00], [392.00, 493.88, 587.33]],  # C -> G
         tempo=2.5, noise=0.008, brightness=1.4, arp=True, detune=0.001, reverb=0.10, sub_bass=0.0,
+        melody=[0, 2, 4, 2], staccato=True,
     ),
     "devotional": dict(
         # Drone on a single sustained root+fifth (~136.1 Hz, the
         # traditionally-cited "Om" pitch) - sparse and meditative.
         chords=[[136.10, 204.15]],
         tempo=0.2, noise=0.006, brightness=0.5, arp=False, detune=0.001, reverb=0.50, sub_bass=0.25,
+        melody=[0, 7, 12, 7], staccato=False,
     ),
     "mystery": dict(
         chords=[[164.81, 196.00, 246.94], [123.47, 146.83, 185.00]],  # Em -> Bm
         tempo=0.8, noise=0.022, brightness=0.8, arp=False, detune=0.004, reverb=0.45, sub_bass=0.55,
+        melody=[0, -3, -6, -3], staccato=False,
     ),
 }
 
@@ -113,8 +130,9 @@ def _generate_track(genre: str, duration_s: float = 32.0, sr: int = _SR) -> np.n
     audibly often across a multi-minute story - doubling it halves how
     often the exact same pattern recurs."""
     g = GENRES.get(genre, GENRES["neutral"])
-    chords, tempo, noise_level, brightness, use_arp, detune_spread, reverb_mix, sub_bass_amt = (
+    chords, tempo, noise_level, brightness, use_arp, detune_spread, reverb_mix, sub_bass_amt, melody_offsets, staccato = (
         g["chords"], g["tempo"], g["noise"], g["brightness"], g["arp"], g["detune"], g["reverb"], g["sub_bass"],
+        g["melody"], g["staccato"],
     )
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
@@ -168,6 +186,32 @@ def _generate_track(genre: str, duration_s: float = 32.0, sr: int = _SR) -> np.n
                 + 0.3 * np.sin(2 * np.pi * note_freqs * 3 * t[mask])
             ) * note_env * 0.05
 
+    # Melodic hook: a short, genre-distinctive motif (semitone offsets
+    # from each chord's root) played an octave above the pad - this is
+    # what actually makes procedural music sound composed rather than
+    # ambient wash. Reuses the same per-sample-varying-frequency trick as
+    # the arpeggio above; the note envelope fades to near-zero exactly at
+    # each step boundary, which masks the phase discontinuity a frequency
+    # jump would otherwise cause.
+    melody = np.zeros(n, dtype=np.float64)
+    melody_step_len_s = bar_len_s / len(melody_offsets)
+    melody_step_idx = (t // melody_step_len_s).astype(int)
+    for chord_i, freqs in enumerate(chords):
+        mask = chord_idx == chord_i
+        if not mask.any():
+            continue
+        root_freq = min(freqs) * 2  # one octave above the chord's root - a distinct register from the pad
+        step_in_bar = melody_step_idx[mask] % len(melody_offsets)
+        semitone_offsets = np.array(melody_offsets)[step_in_bar]
+        note_freqs = root_freq * (2.0 ** (semitone_offsets / 12.0))
+        step_phase = (t[mask] % melody_step_len_s) / melody_step_len_s
+        if staccato:
+            note_env = np.clip(1.0 - step_phase * 4.0, 0, 1) ** 1.5  # short, plucked
+        else:
+            note_env = np.clip(1.0 - step_phase * 1.2, 0, 1)  # sustained, legato
+        melody[mask] += np.sin(2 * np.pi * note_freqs * t[mask]) * note_env
+    melody *= brightness * 0.09 * bar_gain_curve
+
     rng = np.random.default_rng(abs(hash(genre)) % (2**32))
     noise = rng.normal(0, 1, size=n)
     kernel = np.ones(64) / 64
@@ -190,7 +234,7 @@ def _generate_track(genre: str, duration_s: float = 32.0, sr: int = _SR) -> np.n
         sub_swell = 0.5 + 0.5 * np.sin(2 * np.pi * 0.05 * t + 1.5)
         sub *= sub_swell * sub_bass_amt * 0.35 * bar_gain_curve
 
-    dry = (pad + pulse + arp + noise + sub).astype(np.float64)
+    dry = (pad + pulse + arp + melody + noise + sub).astype(np.float64)
     track = _schroeder_reverb(dry, sr, reverb_mix).astype(np.float32)
 
     fade_len = int(sr * 0.5)
@@ -316,7 +360,7 @@ def mix_with_scene_bgm(
     speech: np.ndarray,
     sr: int,
     segments: list[tuple[int, int, tuple[str, float]]],
-    sfx_segments: list[tuple[int, int, tuple[str, float]]] | None = None,
+    sfx_segments: list[tuple[int, int, tuple[list[str], float]]] | None = None,
     bgm_level: float = 1.75,
     sfx_level: float = 0.19,
     bgm_duck_amount: float = 0.85,
@@ -335,7 +379,13 @@ def mix_with_scene_bgm(
     layers environmental sound effects (rain, wind, etc.) alongside the
     music at a lower level with a touch of reverb for spatial blend
     (rather than sounding like a dry, pasted-in loop), each entry's label
-    being an (sfx_type, sfx_intensity) pair.
+    being an ([sfx_types], sfx_intensity) pair - up to 2 sfx types layered
+    together per segment (a storm scene can combine rain+thunder rather
+    than being forced to pick just one), summed directly rather than
+    loudness-normalized (real SFX types have wildly different natural
+    RMS levels - continuous rain vs sparse thunder rumbles - so a flat
+    per-cue-count normalization would sometimes make a combined layer
+    quieter than a single cue, the opposite of intended).
 
     BGM and SFX are ducked INDEPENDENTLY, not as one combined layer:
     bgm_duck_amount is high (music mostly gets out of the way for
@@ -365,9 +415,27 @@ def mix_with_scene_bgm(
 
     if sfx_segments:
         def _tile_sfx_with_intensity(label, sr_, ln):
-            sfx_type, intensity = label
-            audio = tile_sfx_to_length(sfx_type, sr_, ln)
-            return None if audio is None else audio * intensity
+            # Deliberately just summed, no sqrt(N)-style loudness
+            # normalization: that assumes the layered cues have
+            # comparable RMS, which real SFX types don't - continuous
+            # rain (high average RMS) plus sparse thunder rumbles (mostly
+            # silence, low average RMS) summed-then-halved came out
+            # QUIETER than rain alone in testing, the opposite of
+            # intended. A storm genuinely combining both should sound
+            # fuller, not identical in level to a single cue - the
+            # existing downstream peak-normalization guard (see the
+            # final clip check below) already protects against any
+            # resulting overload.
+            sfx_types, intensity = label
+            combined = None
+            for sfx_type in sfx_types:
+                audio = tile_sfx_to_length(sfx_type, sr_, ln)
+                if audio is None:
+                    continue
+                combined = audio if combined is None else combined + audio
+            if combined is None:
+                return None
+            return combined * intensity
 
         sfx_track = _build_crossfaded_track(n, sr, sfx_segments, _tile_sfx_with_intensity)
         sfx_track = _schroeder_reverb(sfx_track, sr, mix=0.18)
