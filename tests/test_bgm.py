@@ -18,6 +18,41 @@ def test_genre_loop_generates_cleanly(genre):
     assert not np.isinf(loop).any()
 
 
+def _low_freq_energy(signal, sr, cutoff_hz=90):
+    """Fraction of total spectral energy below cutoff_hz - an objective
+    proxy for 'how much sub-bass weight', rather than just eyeballing."""
+    spectrum = np.abs(np.fft.rfft(signal))
+    freqs = np.fft.rfftfreq(len(signal), d=1 / sr)
+    total = spectrum.sum()
+    if total == 0:
+        return 0.0
+    return spectrum[freqs < cutoff_hz].sum() / total
+
+
+def test_high_sub_bass_genre_has_more_low_end_than_zero_sub_bass_genre():
+    # horror (sub_bass=0.85) vs happy (sub_bass=0.0) - a real, measurable
+    # difference in low-frequency content, not just a config value that
+    # exists but does nothing.
+    horror_energy = _low_freq_energy(get_bgm_loop("horror"), 24000)
+    happy_energy = _low_freq_energy(get_bgm_loop("happy"), 24000)
+    assert horror_energy > happy_energy
+
+
+def test_sub_bass_zero_genres_stay_bright():
+    # happy/comedy (sub_bass=0, bright upbeat chords) should measure
+    # clearly lower than horror/mystery/action (high sub_bass) - not an
+    # absolute cutoff, since even zero-sub-bass genres with naturally low
+    # chord roots (calm, neutral) carry some inherent low end from the
+    # pulse layer alone; this compares genres where sub_bass is the
+    # actual differentiator.
+    for bright_genre in ("happy", "comedy"):
+        assert GENRES[bright_genre]["sub_bass"] == 0.0
+        bright_energy = _low_freq_energy(get_bgm_loop(bright_genre), 24000)
+        for weighty_genre in ("horror", "mystery", "action"):
+            weighty_energy = _low_freq_energy(get_bgm_loop(weighty_genre), 24000)
+            assert bright_energy < weighty_energy
+
+
 def test_mix_with_bgm_stays_bounded_and_same_shape():
     speech = _fake_speech()
     mixed = mix_with_bgm(speech, 24000, mood="horror")

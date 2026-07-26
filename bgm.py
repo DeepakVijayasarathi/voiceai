@@ -27,55 +27,59 @@ from sfx import tile_sfx_to_length
 # Hz), tempo (beats/sec), background-noise level, brightness (overall
 # gain multiplier for the tonal layers), whether to add an arpeggio,
 # detune spread (wider = more dissonant/uneasy beating between voices),
-# and reverb wetness (0-1, spaciousness).
+# reverb wetness (0-1, spaciousness), and sub_bass (0-1, how much
+# low-end "weight" to layer in - a real film-score technique: a felt-
+# more-than-heard low sine under a dramatic chord adds cinematic gravity
+# that a pad+rhythm alone doesn't have. Kept at 0 for lighter genres
+# where added weight would just read as muddy, not dramatic).
 GENRES = {
     "neutral": dict(
         chords=[[130.81, 164.81, 196.00], [146.83, 174.61, 220.00]],  # C -> Dm
-        tempo=1.0, noise=0.012, brightness=1.0, arp=False, detune=0.001, reverb=0.20,
+        tempo=1.0, noise=0.012, brightness=1.0, arp=False, detune=0.001, reverb=0.20, sub_bass=0.0,
     ),
     "happy": dict(
         chords=[[261.63, 329.63, 392.00], [293.66, 369.99, 440.00], [329.63, 415.30, 493.88]],  # C -> D -> E
-        tempo=2.2, noise=0.010, brightness=1.5, arp=True, detune=0.001, reverb=0.15,
+        tempo=2.2, noise=0.010, brightness=1.5, arp=True, detune=0.001, reverb=0.15, sub_bass=0.0,
     ),
     "sad": dict(
         chords=[[220.00, 261.63, 329.63], [196.00, 233.08, 293.66]],  # Am -> Gm
-        tempo=0.7, noise=0.018, brightness=0.65, arp=False, detune=0.002, reverb=0.35,
+        tempo=0.7, noise=0.018, brightness=0.65, arp=False, detune=0.002, reverb=0.35, sub_bass=0.15,
     ),
     "excited": dict(
         chords=[[293.66, 369.99, 440.00], [329.63, 415.30, 493.88], [349.23, 440.00, 523.25]],  # D -> E -> F
-        tempo=3.0, noise=0.014, brightness=1.7, arp=True, detune=0.001, reverb=0.15,
+        tempo=3.0, noise=0.014, brightness=1.7, arp=True, detune=0.001, reverb=0.15, sub_bass=0.35,
     ),
     "calm": dict(
         chords=[[130.81, 196.00], [146.83, 220.00]],  # root+fifth only
-        tempo=0.5, noise=0.008, brightness=0.55, arp=False, detune=0.001, reverb=0.30,
+        tempo=0.5, noise=0.008, brightness=0.55, arp=False, detune=0.001, reverb=0.30, sub_bass=0.0,
     ),
     "horror": dict(
         # Tritone + minor 2nd clusters - intentionally dissonant.
         chords=[[110.00, 155.56, 207.65], [98.00, 138.59, 185.00]],  # A-Eb-Ab, G-C#-F#
-        tempo=0.3, noise=0.030, brightness=0.9, arp=False, detune=0.012, reverb=0.55,
+        tempo=0.3, noise=0.030, brightness=0.9, arp=False, detune=0.012, reverb=0.55, sub_bass=0.85,
     ),
     "romance": dict(
         # Major 7th chords for a warm, lush character.
         chords=[[261.63, 329.63, 392.00, 493.88], [174.61, 220.00, 261.63, 329.63]],  # Cmaj7 -> Fmaj7
-        tempo=0.6, noise=0.008, brightness=1.1, arp=False, detune=0.0015, reverb=0.40,
+        tempo=0.6, noise=0.008, brightness=1.1, arp=False, detune=0.0015, reverb=0.40, sub_bass=0.1,
     ),
     "action": dict(
         chords=[[293.66, 349.23, 440.00], [220.00, 261.63, 329.63]],  # Dm -> Am
-        tempo=3.5, noise=0.016, brightness=1.6, arp=True, detune=0.001, reverb=0.12,
+        tempo=3.5, noise=0.016, brightness=1.6, arp=True, detune=0.001, reverb=0.12, sub_bass=0.7,
     ),
     "comedy": dict(
         chords=[[261.63, 329.63, 392.00], [392.00, 493.88, 587.33]],  # C -> G
-        tempo=2.5, noise=0.008, brightness=1.4, arp=True, detune=0.001, reverb=0.10,
+        tempo=2.5, noise=0.008, brightness=1.4, arp=True, detune=0.001, reverb=0.10, sub_bass=0.0,
     ),
     "devotional": dict(
         # Drone on a single sustained root+fifth (~136.1 Hz, the
         # traditionally-cited "Om" pitch) - sparse and meditative.
         chords=[[136.10, 204.15]],
-        tempo=0.2, noise=0.006, brightness=0.5, arp=False, detune=0.001, reverb=0.50,
+        tempo=0.2, noise=0.006, brightness=0.5, arp=False, detune=0.001, reverb=0.50, sub_bass=0.25,
     ),
     "mystery": dict(
         chords=[[164.81, 196.00, 246.94], [123.47, 146.83, 185.00]],  # Em -> Bm
-        tempo=0.8, noise=0.022, brightness=0.8, arp=False, detune=0.004, reverb=0.45,
+        tempo=0.8, noise=0.022, brightness=0.8, arp=False, detune=0.004, reverb=0.45, sub_bass=0.55,
     ),
 }
 
@@ -109,8 +113,8 @@ def _generate_track(genre: str, duration_s: float = 32.0, sr: int = _SR) -> np.n
     audibly often across a multi-minute story - doubling it halves how
     often the exact same pattern recurs."""
     g = GENRES.get(genre, GENRES["neutral"])
-    chords, tempo, noise_level, brightness, use_arp, detune_spread, reverb_mix = (
-        g["chords"], g["tempo"], g["noise"], g["brightness"], g["arp"], g["detune"], g["reverb"]
+    chords, tempo, noise_level, brightness, use_arp, detune_spread, reverb_mix, sub_bass_amt = (
+        g["chords"], g["tempo"], g["noise"], g["brightness"], g["arp"], g["detune"], g["reverb"], g["sub_bass"],
     )
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
@@ -169,7 +173,24 @@ def _generate_track(genre: str, duration_s: float = 32.0, sr: int = _SR) -> np.n
     kernel = np.ones(64) / 64
     noise = np.convolve(noise, kernel, mode="same") * noise_level
 
-    dry = (pad + pulse + arp + noise).astype(np.float64)
+    sub = np.zeros(n, dtype=np.float64)
+    if sub_bass_amt > 0:
+        # A felt-more-than-heard low sine two octaves under each chord's
+        # root - a real film-score technique for cinematic "weight"/dread
+        # that a mid-range pad alone doesn't carry. Swells on its own
+        # slower cycle (not locked to the pad's swell) since sub-bass in
+        # scores typically builds INTO a dramatic beat rather than
+        # pulsing in lockstep with the harmony.
+        for chord_i, freqs in enumerate(chords):
+            mask = chord_idx == chord_i
+            if not mask.any():
+                continue
+            root_freq = min(freqs) / 4
+            sub[mask] += np.sin(2 * np.pi * root_freq * t[mask])
+        sub_swell = 0.5 + 0.5 * np.sin(2 * np.pi * 0.05 * t + 1.5)
+        sub *= sub_swell * sub_bass_amt * 0.35 * bar_gain_curve
+
+    dry = (pad + pulse + arp + noise + sub).astype(np.float64)
     track = _schroeder_reverb(dry, sr, reverb_mix).astype(np.float32)
 
     fade_len = int(sr * 0.5)
