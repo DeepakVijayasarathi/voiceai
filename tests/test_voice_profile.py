@@ -1,7 +1,36 @@
+import librosa
 import numpy as np
 import pytest
 
-from voice_profile import PROFILE_NAMES, apply_voice_profile, assign_profiles, get_speed_multiplier, get_voice_profile
+from voice_profile import (
+    PROFILE_NAMES, _PROFILES, _formant_shift, apply_voice_profile,
+    assign_profiles, get_speed_multiplier, get_voice_profile,
+)
+
+
+def _harmonic_signal(sr, duration, f0, n_harmonics=8, formant_center_harmonic=3):
+    # A vowel-like signal: several harmonics of f0, with one band boosted
+    # to act as a synthetic "formant" the envelope warp can actually move
+    # - a pure sine tone has no envelope shape for formant shifting to
+    # act on.
+    t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+    audio = np.zeros_like(t)
+    for h in range(1, n_harmonics + 1):
+        amp = 0.15 if abs(h - formant_center_harmonic) > 1 else 0.5
+        audio += amp * np.sin(2 * np.pi * f0 * h * t)
+    audio = audio / np.abs(audio).max() * 0.5
+    return audio.astype(np.float32)
+
+
+def _estimate_f0(audio, sr, fmin=60, fmax=400):
+    # Autocorrelation pitch estimate - periodicity-based, so it's a fair
+    # check that formant shifting (which only touches per-bin amplitude,
+    # not where harmonic peaks sit) leaves the fundamental where it was.
+    corr = np.correlate(audio, audio, mode="full")[len(audio) - 1:]
+    min_lag = int(sr / fmax)
+    max_lag = int(sr / fmin)
+    peak_lag = min_lag + int(np.argmax(corr[min_lag:max_lag]))
+    return sr / peak_lag
 
 
 def test_get_voice_profile_is_deterministic_and_case_insensitive():
@@ -75,3 +104,63 @@ def test_get_speed_multiplier_within_modest_bounds(profile):
 
 def test_deeper_profiles_speak_no_faster_than_brighter_ones():
     assert get_speed_multiplier("deepest") < get_speed_multiplier("highest")
+
+
+def test_formant_shift_is_noop_for_ratio_one():
+    sr = 24000
+    audio = _harmonic_signal(sr, 1.0, 150)
+    assert np.array_equal(_formant_shift(audio, sr, 1.0), audio)
+
+
+def test_formant_shift_preserves_fundamental_frequency():
+    # The whole point: formants move, pitch doesn't - unlike a plain
+    # pitch_shift call, which would move both together.
+    sr = 24000
+    audio = _harmonic_signal(sr, 1.0, 150)
+    shifted = _formant_shift(audio, sr, 1.3)
+    assert abs(_estimate_f0(shifted, sr) - _estimate_f0(audio, sr)) < 5
+
+
+def test_formant_shift_moves_spectral_centroid_up_for_ratio_above_one():
+    sr = 24000
+    audio = _harmonic_signal(sr, 1.0, 150)
+    shifted = _formant_shift(audio, sr, 1.3)
+    centroid_before = librosa.feature.spectral_centroid(y=audio, sr=sr).mean()
+    centroid_after = librosa.feature.spectral_centroid(y=shifted, sr=sr).mean()
+    assert centroid_after > centroid_before
+
+
+def test_formant_shift_moves_spectral_centroid_down_for_ratio_below_one():
+    sr = 24000
+    audio = _harmonic_signal(sr, 1.0, 150)
+    shifted = _formant_shift(audio, sr, 0.75)
+    centroid_before = librosa.feature.spectral_centroid(y=audio, sr=sr).mean()
+    centroid_after = librosa.feature.spectral_centroid(y=shifted, sr=sr).mean()
+    assert centroid_after < centroid_before
+
+
+def test_formant_shift_preserves_audio_length():
+    sr = 24000
+    audio = _harmonic_signal(sr, 0.73, 180)  # deliberately not a clean multiple of the hop size
+    shifted = _formant_shift(audio, sr, 1.2)
+    assert shifted.shape == audio.shape
+
+
+def test_child_profile_pitches_and_formants_higher_than_highest():
+    child_pitch, _, _, child_formant = _PROFILES["child"]
+    highest_pitch, _, _, highest_formant = _PROFILES["highest"]
+    assert child_pitch > highest_pitch
+    assert child_formant > highest_formant
+
+
+def test_apply_voice_profile_with_formant_shift_stays_bounded_on_harmonic_signal():
+    # The parametrized sine-wave test above covers every profile on a
+    # pure tone (no envelope shape); this covers the harmonic-signal case
+    # the formant warp is actually designed to act on.
+    sr = 24000
+    audio = _harmonic_signal(sr, 1.5, 160)
+    for profile in PROFILE_NAMES:
+        shifted = apply_voice_profile(audio, sr, profile)
+        assert shifted.shape == audio.shape
+        assert not np.isnan(shifted).any()
+        assert not np.isinf(shifted).any()

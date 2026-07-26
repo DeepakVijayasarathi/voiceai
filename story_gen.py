@@ -298,8 +298,10 @@ def extract_characters(story_text: str, language: str) -> list[dict]:
         "across languages later). Also suggest a \"voice_profile\" that "
         f"fits their personality, one of: {profile_options} - deepest/deep "
         "suit menacing, authoritative, or older/gruff characters; "
-        "bright/high/highest suit youthful, cheerful, or high-energy "
-        "characters; warm/neutral_shift suit gentle or unremarkable ones. "
+        "bright/high/highest suit youthful, cheerful, or high-energy adult "
+        "or teen characters; child suits a character who actually IS a "
+        "young child (not just youthful-sounding); warm/neutral_shift suit "
+        "gentle or unremarkable ones. "
         "This is a preference based on personality, not a hard rule. "
         "Respond with ONLY a JSON array, no markdown fences, no other text: "
         '[{"name": "...", "personality": "...", "backstory": "...", "voice_profile": "..."}]. '
