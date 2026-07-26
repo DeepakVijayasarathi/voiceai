@@ -264,6 +264,16 @@
   .dub-tab.active { border-color: var(--grad-2); color: var(--text); background: var(--bg-soft); }
   .dub-tab.failed { color: var(--error); cursor: default; opacity: .7; }
 
+  .pack-preview-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .pack-preview-card { border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; background: var(--bg-soft); }
+  .pack-preview-lang {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--grad-3); margin-bottom: 6px;
+  }
+  .pack-preview-fields { display: flex; flex-direction: column; gap: 3px; }
+  .pack-preview-field { font-size: 12px; color: var(--text); line-height: 1.5; }
+  .pack-preview-field-label { font-weight: 700; color: var(--muted); }
+
   button.btn {
     margin-top: 18px; border: none; border-radius: 10px; padding: 11px 18px; font-size: 13.5px;
     font-weight: 700; cursor: pointer; color: white; background: var(--gradient);
@@ -1109,9 +1119,17 @@ function DubPanel({ apiKey, story }) {
   const [status, setStatus] = useState({ text: "", cls: "" });
   const [dubs, setDubs] = useState(null);
   const [activeTab, setActiveTab] = useState(null);
+  const [packs, setPacks] = useState({}); // code -> {places, festivals, folklore, deities, names, register_note} | "loading" | "error"
 
   const toggleLang = (code) => {
     setSelected((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+    if (!packs[code]) {
+      setPacks((p) => ({ ...p, [code]: "loading" }));
+      fetch(`${API_BASE}/culture/${code}`, { headers: authHeaders(apiKey) })
+        .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+        .then((data) => setPacks((p) => ({ ...p, [code]: data })))
+        .catch(() => setPacks((p) => ({ ...p, [code]: "error" })));
+    }
   };
 
   const langName = (code) => (LANGUAGES.find(([c]) => c === code) || [code, code])[1];
@@ -1156,6 +1174,31 @@ function DubPanel({ apiKey, story }) {
           </button>
         ))}
       </div>
+
+      {selected.length > 0 && (
+        <div className="pack-preview-list">
+          {selected.map((code) => {
+            const pack = packs[code];
+            return (
+              <div className="pack-preview-card" key={code}>
+                <div className="pack-preview-lang">{langName(code)} culture pack</div>
+                {pack === "loading" && <div className="hint">Loading…</div>}
+                {pack === "error" && <div className="hint">Couldn't load this language's pack - dubbing will still use it server-side.</div>}
+                {pack && pack !== "loading" && pack !== "error" && (
+                  <div className="pack-preview-fields">
+                    {CULTURE_PACK_FIELDS.map(([key, label]) => pack[key] ? (
+                      <div className="pack-preview-field" key={key}>
+                        <span className="pack-preview-field-label">{label}:</span> {pack[key]}
+                      </div>
+                    ) : null)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <button className="btn small" style={{ marginTop: 12 }} onClick={doDub} disabled={busy}>
         {busy ? "Dubbing…" : `Dub into ${selected.length || "…"} language${selected.length === 1 ? "" : "s"}`}
       </button>
