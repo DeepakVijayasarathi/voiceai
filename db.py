@@ -46,6 +46,7 @@ def init_db() -> None:
                 text TEXT NOT NULL,
                 parent_story_id INTEGER REFERENCES stories(id),
                 branch_note TEXT,
+                image BLOB,
                 created_at TEXT DEFAULT (datetime('now'))
             );
             CREATE TABLE IF NOT EXISTS characters (
@@ -66,11 +67,15 @@ def init_db() -> None:
         """)
         conn.commit()
         # CREATE TABLE IF NOT EXISTS above is a no-op against an existing
-        # DB file from before voice_profile existed - add it explicitly so
-        # upgrading doesn't require dropping saved stories/characters.
-        existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(characters)")}
-        if "voice_profile" not in existing_columns:
+        # DB file from before voice_profile/image existed - add them
+        # explicitly so upgrading doesn't require dropping saved data.
+        existing_char_columns = {row["name"] for row in conn.execute("PRAGMA table_info(characters)")}
+        if "voice_profile" not in existing_char_columns:
             conn.execute("ALTER TABLE characters ADD COLUMN voice_profile TEXT")
+            conn.commit()
+        existing_story_columns = {row["name"] for row in conn.execute("PRAGMA table_info(stories)")}
+        if "image" not in existing_story_columns:
+            conn.execute("ALTER TABLE stories ADD COLUMN image BLOB")
             conn.commit()
 
 
@@ -86,9 +91,19 @@ def save_story(title: str, language: str, text: str, parent_story_id: int | None
 
 
 def get_story(story_id: int) -> dict | None:
+    """Excludes the raw image BLOB (use get_story_image for that) - a
+    JSON story record shouldn't carry a multi-hundred-KB image payload
+    inline; `has_image` tells the caller whether one exists."""
     conn = _get_conn()
     with _lock:
-        row = conn.execute("SELECT * FROM stories WHERE id = ?", (story_id,)).fetchone()
+        row = conn.execute(
+            """
+            SELECT id, title, language, text, parent_story_id, branch_note,
+                   created_at, (image IS NOT NULL) AS has_image
+            FROM stories WHERE id = ?
+            """,
+            (story_id,),
+        ).fetchone()
     return dict(row) if row else None
 
 
@@ -96,10 +111,28 @@ def list_stories(limit: int = 50) -> list[dict]:
     conn = _get_conn()
     with _lock:
         rows = conn.execute(
-            "SELECT id, title, language, parent_story_id, branch_note, created_at FROM stories ORDER BY id DESC LIMIT ?",
+            """
+            SELECT id, title, language, parent_story_id, branch_note,
+                   created_at, (image IS NOT NULL) AS has_image
+            FROM stories ORDER BY id DESC LIMIT ?
+            """,
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def save_story_image(story_id: int, image_bytes: bytes) -> None:
+    conn = _get_conn()
+    with _lock:
+        conn.execute("UPDATE stories SET image = ? WHERE id = ?", (image_bytes, story_id))
+        conn.commit()
+
+
+def get_story_image(story_id: int) -> bytes | None:
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute("SELECT image FROM stories WHERE id = ?", (story_id,)).fetchone()
+    return bytes(row["image"]) if row and row["image"] is not None else None
 
 
 def save_character(
