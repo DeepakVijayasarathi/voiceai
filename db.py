@@ -156,6 +156,32 @@ def get_story(story_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def delete_story(story_id: int) -> bool:
+    """Deletes a story and its own story-scoped rows (story_characters
+    links, story_images, quality_backlog entries). Branches/variants that
+    point at this story (parent_story_id/variant_of_story_id) are
+    detached, not cascade-deleted - they become standalone root stories
+    rather than disappearing with their ancestor, since a branch a user
+    kept exploring is real content in its own right, not disposable
+    metadata. Characters that originated here (characters.origin_story_id)
+    persist too, just without that origin reference - this module's whole
+    premise is that characters outlive any single story. Returns False if
+    the story didn't exist (nothing to delete, not an error)."""
+    conn = _get_conn()
+    with _lock:
+        if conn.execute("SELECT 1 FROM stories WHERE id = ?", (story_id,)).fetchone() is None:
+            return False
+        conn.execute("UPDATE stories SET parent_story_id = NULL WHERE parent_story_id = ?", (story_id,))
+        conn.execute("UPDATE stories SET variant_of_story_id = NULL WHERE variant_of_story_id = ?", (story_id,))
+        conn.execute("UPDATE characters SET origin_story_id = NULL WHERE origin_story_id = ?", (story_id,))
+        conn.execute("DELETE FROM story_characters WHERE story_id = ?", (story_id,))
+        conn.execute("DELETE FROM story_images WHERE story_id = ?", (story_id,))
+        conn.execute("DELETE FROM quality_backlog WHERE story_id = ?", (story_id,))
+        conn.execute("DELETE FROM stories WHERE id = ?", (story_id,))
+        conn.commit()
+        return True
+
+
 def list_stories(limit: int = 50) -> list[dict]:
     conn = _get_conn()
     with _lock:

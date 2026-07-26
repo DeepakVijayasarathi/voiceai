@@ -16,6 +16,7 @@ import io
 import logging
 import os
 import re
+import shutil
 import time
 import wave
 from contextlib import asynccontextmanager
@@ -740,7 +741,7 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
     image_error = None
     if req.visual or req.video:
         try:
-            image_bytes = generate_story_image(story_text)
+            image_bytes = generate_story_image(story_text, title=req.description[:80])
             db.save_story_image(story_id, image_bytes)
         except CoverImageGenError as e:
             logger.warning("visual generation failed for story_id=%s (non-fatal): %s", story_id, e)
@@ -810,6 +811,25 @@ def get_story(story_id: int):
     if not story:
         raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
     return story
+
+
+@app.delete("/stories/{story_id}")
+def delete_story(story_id: int, x_api_key: str | None = Header(default=None)):
+    """Deletes a story record (see db.delete_story's docstring for what
+    happens to branches/variants/characters that reference it - they're
+    detached, not cascade-deleted) plus its own on-disk generated assets
+    (scene image files, persisted narration audio). 404 if the story
+    doesn't exist."""
+    _check_auth(x_api_key)
+    if not db.delete_story(story_id):
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+    image_dir = os.path.join(STATIC_DIR, "images", str(story_id))
+    if os.path.isdir(image_dir):
+        shutil.rmtree(image_dir, ignore_errors=True)
+    audio_path = os.path.join(STATIC_DIR, "audio", f"{story_id}.wav")
+    if os.path.exists(audio_path):
+        os.remove(audio_path)
+    return {"deleted": True, "story_id": story_id}
 
 
 @app.get("/stories/{story_id}/image")
@@ -1036,6 +1056,56 @@ class SwitchLanguageRequest(BaseModel):
     bgm: bool = Field(default=True)
 
 
+def _generate_language_variant(
+    original: dict, story_id: int, target_language: str, emotion: str | None, bgm: bool,
+) -> dict:
+    """Shared core of language-switching: retells `original`'s text in
+    `target_language` (story_gen.adapt_story_language), scores/rewrites,
+    saves it as a new story linked via variant_of_story_id, carries over
+    the original's characters (for voice-profile continuity), and
+    synthesizes. Used by both POST /stories/{id}/switch-language (one
+    language, returns audio directly) and POST /stories/{id}/dub (several
+    languages at once, returns a JSON summary - see that endpoint's
+    docstring). Raises StoryGenError/generic Exception on failure - each
+    caller decides how to turn that into a response for its own shape
+    (single 502/500 vs. a per-language entry in a batch)."""
+    adapted_text = adapt_story_language(original["text"], original["language"], target_language)
+    adapted_text, quality_scores = score_and_maybe_rewrite(adapted_text, target_language)
+
+    new_story_id = db.save_story(
+        title=f"{original['title'] or 'Story #' + str(story_id)} ({target_language})",
+        language=target_language, text=adapted_text, variant_of_story_id=story_id,
+    )
+    if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
+        db.save_quality_entry(new_story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
+    story_characters = db.get_characters_for_story(story_id)
+    character_names = [c["name"] for c in story_characters]
+    personality_hints = {c["name"]: c["voice_profile"] for c in story_characters if c.get("voice_profile")}
+    for c in story_characters:
+        db.link_character_to_story(new_story_id, c["id"])
+
+    tts_req = TTSRequest(text=adapted_text, language=target_language, emotion=emotion, bgm=bgm)
+    resolved_emotion, speed, noise_scale = _resolve_emotion_and_speed(tts_req)
+
+    _metrics["requests_total"] += 1
+    t0 = time.time()
+    try:
+        audio, sr, _chunk_offsets, _raw_chunks = _synthesize_long_form(
+            adapted_text, target_language, speed, noise_scale=noise_scale, bgm=bgm,
+            bgm_fallback=resolved_emotion or "neutral", known_characters=character_names,
+            personality_hints=personality_hints,
+        )
+    except Exception:
+        _metrics["requests_failed"] += 1
+        raise
+    _metrics["synth_seconds_total"] += time.time() - t0
+
+    return {
+        "new_story_id": new_story_id, "adapted_text": adapted_text,
+        "quality_scores": quality_scores, "audio": audio, "sr": sr,
+    }
+
+
 @app.post("/stories/{story_id}/switch-language")
 def switch_language(story_id: int, req: SwitchLanguageRequest, x_api_key: str | None = Header(default=None)):
     """'Switch language' subset - see story_gen.adapt_story_language's
@@ -1045,7 +1115,8 @@ def switch_language(story_id: int, req: SwitchLanguageRequest, x_api_key: str | 
     audio stream that changes language mid-sentence - VITS is a separate
     model per language, so that's not a meaningful operation here.
     "Switching mid-story" means resuming the same story, same characters,
-    from a saved variant in the new language."""
+    from a saved variant in the new language. For several languages at
+    once, see POST /stories/{id}/dub."""
     _check_auth(x_api_key)
     original = db.get_story(story_id)
     if not original:
@@ -1056,49 +1127,96 @@ def switch_language(story_id: int, req: SwitchLanguageRequest, x_api_key: str | 
         raise HTTPException(status_code=400, detail=f"Story {story_id} is already in language '{req.language}'")
 
     try:
-        adapted_text = adapt_story_language(original["text"], original["language"], req.language)
+        result = _generate_language_variant(original, story_id, req.language, req.emotion, req.bgm)
     except StoryGenError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    adapted_text, quality_scores = score_and_maybe_rewrite(adapted_text, req.language)
-
-    new_story_id = db.save_story(
-        title=f"{original['title'] or 'Story #' + str(story_id)} ({req.language})",
-        language=req.language, text=adapted_text, variant_of_story_id=story_id,
-    )
-    if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
-        db.save_quality_entry(new_story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
-    story_characters = db.get_characters_for_story(story_id)
-    character_names = [c["name"] for c in story_characters]
-    personality_hints = {c["name"]: c["voice_profile"] for c in story_characters if c.get("voice_profile")}
-    for c in story_characters:
-        db.link_character_to_story(new_story_id, c["id"])
-
-    tts_req = TTSRequest(text=adapted_text, language=req.language, emotion=req.emotion, bgm=req.bgm)
-    emotion, speed, noise_scale = _resolve_emotion_and_speed(tts_req)
-
-    _metrics["requests_total"] += 1
-    t0 = time.time()
-    try:
-        audio, sr, _chunk_offsets, _raw_chunks = _synthesize_long_form(
-            adapted_text, req.language, speed, noise_scale=noise_scale, bgm=req.bgm,
-            bgm_fallback=emotion or "neutral", known_characters=character_names,
-            personality_hints=personality_hints,
-        )
     except Exception:
-        _metrics["requests_failed"] += 1
         logger.exception("switch-language synthesis failed for story_id=%s -> %s", story_id, req.language)
         raise HTTPException(status_code=500, detail="Speech generation failed")
-    _metrics["synth_seconds_total"] += time.time() - t0
 
-    story_b64 = base64.b64encode(adapted_text.encode("utf-8")).decode("ascii")
+    story_b64 = base64.b64encode(result["adapted_text"].encode("utf-8")).decode("ascii")
     return Response(
-        content=_wav_bytes(audio, sr),
+        content=_wav_bytes(result["audio"], result["sr"]),
         media_type="audio/wav",
         headers={
-            "X-Story-Text-B64": story_b64, "X-Story-Id": str(new_story_id), "X-Variant-Of-Story-Id": str(story_id),
-            **_quality_headers(quality_scores),
+            "X-Story-Text-B64": story_b64, "X-Story-Id": str(result["new_story_id"]), "X-Variant-Of-Story-Id": str(story_id),
+            **_quality_headers(result["quality_scores"]),
         },
     )
+
+
+class DubRequest(BaseModel):
+    languages: list[str] = Field(..., min_length=1, description="ISO 639-3 codes to dub this story into, e.g. ['tam', 'ben', 'hin'].")
+    emotion: str | None = Field(default="auto")
+    bgm: bool = Field(default=True)
+
+
+@app.post("/stories/{story_id}/dub")
+def dub_story(story_id: int, req: DubRequest, x_api_key: str | None = Header(default=None)):
+    """Batch version of switch-language: adapts and synthesizes this story
+    into several languages in one call, each retold through the target
+    language's culture pack (story_gen.get_effective_cultural_context) the
+    same way a single switch-language call would - same variant_of_story_id
+    linkage, same quality-scoring pipeline. Unlike switch-language, this
+    returns a JSON summary rather than audio (inlining several WAVs in one
+    response isn't practical); each successful variant's audio is
+    persisted server-side and fetched separately via
+    GET /stories/{variant_id}/audio. A language that fails (bad adaptation,
+    TTS error) is reported as its own ok=false entry rather than failing
+    the whole batch - a partial dub is still useful."""
+    _check_auth(x_api_key)
+    original = db.get_story(story_id)
+    if not original:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+
+    supported = engine.languages()
+    seen: set[str] = set()
+    targets: list[str] = []
+    for lang in req.languages:
+        if lang == original["language"] or lang in seen:
+            continue
+        seen.add(lang)
+        targets.append(lang)
+    if not targets:
+        raise HTTPException(status_code=400, detail="No valid target languages (all matched the original language or were duplicates)")
+    unsupported = [l for l in targets if l not in supported]
+    if unsupported:
+        raise HTTPException(status_code=400, detail=f"Unsupported language(s) {unsupported}. Supported: {list(supported)}")
+
+    results = []
+    for lang in targets:
+        try:
+            result = _generate_language_variant(original, story_id, lang, req.emotion, req.bgm)
+        except StoryGenError as e:
+            results.append({"language": lang, "ok": False, "error": str(e)})
+            continue
+        except Exception:
+            logger.exception("dub synthesis failed for story_id=%s -> %s", story_id, lang)
+            results.append({"language": lang, "ok": False, "error": "Speech generation failed"})
+            continue
+        db.save_story_audio(result["new_story_id"], _wav_bytes(result["audio"], result["sr"]))
+        results.append({
+            "language": lang, "ok": True, "story_id": result["new_story_id"],
+            "quality_overall": result["quality_scores"].get("overall"),
+        })
+
+    return {"story_id": story_id, "dubs": results}
+
+
+@app.get("/stories/{story_id}/audio")
+def get_story_audio(story_id: int):
+    """Persisted narration WAV for a story - populated for stories created
+    with video=true (see POST /dream-to-story) and for every successful
+    variant produced by POST /stories/{id}/dub. 404 if this story never
+    had its audio persisted (e.g. an ordinary /tts call, which streams
+    audio back without saving it)."""
+    story = db.get_story(story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+    audio_bytes = db.get_story_audio(story_id)
+    if audio_bytes is None:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} has no persisted audio")
+    return Response(content=audio_bytes, media_type="audio/wav")
 
 
 class ReviveRequest(BaseModel):
