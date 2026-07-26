@@ -1,7 +1,23 @@
+import pytest
+
+import db
 import story_gen
-from story_gen import LANGUAGE_CULTURAL_CONTEXT, LANGUAGE_NAMES, _ARC_CLAUSE, _cultural_clause
+from story_gen import LANGUAGE_CULTURAL_CONTEXT, LANGUAGE_NAMES, _ARC_CLAUSE, _cultural_clause, get_effective_cultural_context
 
 REQUIRED_DIMENSIONS = {"places", "festivals", "folklore", "deities", "names", "register_note"}
+
+
+@pytest.fixture(autouse=True)
+def fresh_db(tmp_path, monkeypatch):
+    # _cultural_clause/get_effective_cultural_context now read
+    # db.get_culture_pack_override on every call - autouse so every test
+    # in this file gets an isolated DB, never the real default path,
+    # whether or not the individual test cares about overrides.
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(db, "_conn", None)
+    db.init_db()
+    yield db
+    monkeypatch.setattr(db, "_conn", None)
 
 
 def test_arc_clause_asks_for_a_real_turn_and_resolution():
@@ -118,3 +134,31 @@ def test_adapt_story_language_targets_correct_language_names(monkeypatch):
     assert "Hindi" in captured["system_prompt"]
     assert "Tamil" in captured["system_prompt"]
     assert captured["user_content"] == "मूल हिंदी कहानी"
+
+
+def test_get_effective_cultural_context_returns_default_without_override(fresh_db):
+    ctx = get_effective_cultural_context("tam")
+    assert ctx == LANGUAGE_CULTURAL_CONTEXT["tam"]
+
+
+def test_get_effective_cultural_context_unknown_language_returns_none(fresh_db):
+    assert get_effective_cultural_context("xx") is None
+
+
+def test_get_effective_cultural_context_merges_override_over_default(fresh_db):
+    db.save_culture_pack_override("tam", {"places": "an edited place"})
+    ctx = get_effective_cultural_context("tam")
+    assert ctx["places"] == "an edited place"
+    # Untouched dimensions still fall through to the built-in default.
+    assert ctx["festivals"] == LANGUAGE_CULTURAL_CONTEXT["tam"]["festivals"]
+    assert ctx["names"] == LANGUAGE_CULTURAL_CONTEXT["tam"]["names"]
+
+
+def test_cultural_clause_reflects_edited_places(fresh_db):
+    db.save_culture_pack_override("tam", {"places": "a completely invented test landmark"})
+    clause = _cultural_clause("tam")
+    assert "a completely invented test landmark" in clause
+    # Rameswaram only ever appears in the (now-overridden) places field -
+    # unlike "Madurai", which also legitimately appears in the untouched
+    # folklore field ("the Madurai Veeran legend") and shouldn't vanish.
+    assert "Rameswaram" not in clause

@@ -19,6 +19,7 @@ import os
 
 import httpx
 
+import db
 from voice_profile import PROFILE_NAMES
 
 logger = logging.getLogger("indic_tts.story_gen")
@@ -155,16 +156,36 @@ LANGUAGE_CULTURAL_CONTEXT = {
 }
 
 
+def get_effective_cultural_context(language: str) -> dict | None:
+    """LANGUAGE_CULTURAL_CONTEXT's built-in entry for `language`, with any
+    admin edit (see db.get_culture_pack_override, PUT /culture/{language})
+    taking precedence field-by-field - editing just `places` doesn't blank
+    out the other five dimensions. Returns None for an unknown language.
+    This is the ONLY place that should read cultural context for actually
+    generating something; LANGUAGE_CULTURAL_CONTEXT itself is the default,
+    not necessarily what's currently in effect."""
+    default = LANGUAGE_CULTURAL_CONTEXT.get(language)
+    if not default:
+        return None
+    override = db.get_culture_pack_override(language)
+    if not override:
+        return dict(default)
+    merged = dict(default)
+    merged.update({k: v for k, v in override.items() if v})
+    return merged
+
+
 def _cultural_clause(language: str, *, include_names: bool = True) -> str:
-    """Builds a soft, contextual cultural-grounding instruction from
-    LANGUAGE_CULTURAL_CONTEXT - places for any story that needs a
-    setting, folklore for horror/mystery, deities for devotional, address
-    register for dialogue, plus (optionally) authentic names for new
-    characters. Genre isn't known in advance here (classification happens
-    after generation - see emotion.py), so all dimensions are offered
-    together and the model is told explicitly to only use what fits, not
-    force every category in."""
-    ctx = LANGUAGE_CULTURAL_CONTEXT.get(language)
+    """Builds a soft, contextual cultural-grounding instruction from the
+    effective cultural context (see get_effective_cultural_context) -
+    places for any story that needs a setting, folklore for
+    horror/mystery, deities for devotional, address register for
+    dialogue, plus (optionally) authentic names for new characters. Genre
+    isn't known in advance here (classification happens after generation
+    - see emotion.py), so all dimensions are offered together and the
+    model is told explicitly to only use what fits, not force every
+    category in."""
+    ctx = get_effective_cultural_context(language)
     if not ctx:
         return ""
     parts = [

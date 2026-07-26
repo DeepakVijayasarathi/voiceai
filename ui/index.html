@@ -143,6 +143,14 @@
     position: relative; z-index: 1; width: 100%; padding: 8px 10px; font-size: 11.5px; font-weight: 700;
     color: #fff; background: linear-gradient(0deg, rgba(0,0,0,.65), transparent);
   }
+  .culture-tile-edit {
+    position: absolute; top: 8px; right: 8px; z-index: 2; margin: 0; padding: 4px 9px;
+    font-size: 10.5px; font-weight: 700; border-radius: 999px; border: none; cursor: pointer;
+    background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(2px);
+    opacity: 0; transition: opacity .15s;
+  }
+  .culture-tile:hover .culture-tile-edit, .culture-tile-edit:focus { opacity: 1; }
+  .culture-editor { margin-top: 14px; }
 
   .preview-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
   .preview-row {
@@ -231,6 +239,28 @@
 
   audio { width: 100%; margin-top: 14px; }
   img.scene-image { width: 100%; border-radius: 12px; margin-top: 14px; display: block; background: var(--bg-soft); }
+
+  .audio-card {
+    display: flex; gap: 14px; align-items: center; margin-top: 14px; padding: 12px;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
+  }
+  .audio-thumb {
+    width: 64px; height: 64px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+    background: var(--gradient); box-shadow: var(--shadow);
+  }
+  .audio-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .audio-thumb-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #fff; }
+  .audio-thumb-fallback svg { width: 24px; height: 24px; }
+  .audio-card-body { flex: 1; min-width: 0; }
+  .audio-card-title {
+    font-size: 12px; font-weight: 700; margin-bottom: 6px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .audio-card-body audio { width: 100%; margin-top: 0; display: block; }
+  @media (max-width: 480px) {
+    .audio-card { flex-direction: column; align-items: stretch; }
+    .audio-thumb { width: 100%; height: 150px; border-radius: 12px; }
+  }
 
   .meta { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
 
@@ -389,6 +419,31 @@ function LangSelect({ value, onChange }) {
     <select value={value} onChange={(e) => onChange(e.target.value)}>
       {LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
     </select>
+  );
+}
+
+/* A responsive "album art + player" card used everywhere a story's audio
+   result is shown. thumbnailUrl is whatever real image the story already
+   has (scene illustration, cover image, character avatar) - never
+   generated just for this card. Without one, a gradient icon fills the
+   same frame so every result reads consistently, not a layout that only
+   works when an image happens to exist. object-fit: cover in the CSS is
+   what makes an arbitrary source image "fit the frame" without distortion,
+   regardless of its own aspect ratio. */
+function AudioPlayerCard({ audioUrl, thumbnailUrl, title, icon, audioRef, onTimeUpdate }) {
+  if (!audioUrl) return null;
+  return (
+    <div className="audio-card">
+      <div className="audio-thumb">
+        {thumbnailUrl
+          ? <img src={thumbnailUrl} alt={title || "Cover"} />
+          : <div className="audio-thumb-fallback"><Icon name={icon || "narrate"} /></div>}
+      </div>
+      <div className="audio-card-body">
+        {title && <div className="audio-card-title">{title}</div>}
+        <audio ref={audioRef} controls autoPlay src={audioUrl} onTimeUpdate={onTimeUpdate} />
+      </div>
+    </div>
   );
 }
 
@@ -608,7 +663,10 @@ function NarratePanel({ apiKey }) {
           <div className={`status ${status.cls}`}>{status.text}</div>
           {resolvedEmotion && <span className="badge neutral">✦ AI detected mood: {resolvedEmotion}</span>}
           {currentImage && <img className="scene-image" src={API_BASE + currentImage} alt="Scene illustration" />}
-          {audioUrl && <audio ref={audioRef} controls autoPlay src={audioUrl} onTimeUpdate={onTimeUpdate} />}
+          <AudioPlayerCard
+            audioUrl={audioUrl} audioRef={audioRef} onTimeUpdate={onTimeUpdate}
+            thumbnailUrl={currentImage ? API_BASE + currentImage : null} icon="narrate" title="Narration"
+          />
           {meta && <div className="meta">{meta}</div>}
           <button className="btn ghost" onClick={startOver} style={{ marginTop: 14 }}>Start over</button>
         </React.Fragment>
@@ -677,7 +735,7 @@ function ClonePanel({ apiKey }) {
       <div className="hint">Proxies to a separate reference-audio-conditioned service and takes 30-70s - that's inherent to the model, not a bug. This is a per-request clone, not a saved Voice Bank entry (see the pitch's Cost section for that roadmap item).</div>
       <button className="btn" onClick={submit} disabled={busy}>{busy ? "Cloning…" : "Clone voice"}</button>
       <div className={`status ${status.cls}`}>{status.text}</div>
-      {audioUrl && <audio controls autoPlay src={audioUrl} />}
+      <AudioPlayerCard audioUrl={audioUrl} icon="mic" title="Cloned voice" />
       {meta && <div className="meta">{meta}</div>}
     </div>
   );
@@ -813,8 +871,11 @@ function DreamPanel({ apiKey, onStorySaved }) {
       )}
       {qualityHeaders && qualityBadge(qualityHeaders)}
       {currentImage && <img className="scene-image" src={API_BASE + currentImage} alt="Scene illustration" />}
-      {coverImageId && <img className="scene-image" src={`${API_BASE}/stories/${coverImageId}/image`} alt="Cover" />}
-      {audioUrl && <audio ref={audioRef} controls autoPlay src={audioUrl} onTimeUpdate={onTimeUpdate} />}
+      {!currentImage && coverImageId && <img className="scene-image" src={`${API_BASE}/stories/${coverImageId}/image`} alt="Cover" />}
+      <AudioPlayerCard
+        audioUrl={audioUrl} audioRef={audioRef} onTimeUpdate={onTimeUpdate} icon="sparkle" title="Story narration"
+        thumbnailUrl={currentImage ? API_BASE + currentImage : (coverImageId ? `${API_BASE}/stories/${coverImageId}/image` : null)}
+      />
       {videoAvailable && coverImageId && (
         <button className="btn ghost small" style={{ marginTop: 10 }} onClick={downloadCoverVideo}>Download video</button>
       )}
@@ -884,7 +945,6 @@ function VillainPanel({ apiKey, onStorySaved }) {
       </div>
       <button className="btn" onClick={submit} disabled={busy}>{busy ? "Working…" : "Generate villain"}</button>
       <div className={`status ${status.cls}`}>{status.text}</div>
-      {avatarCharacterId && <img className="scene-image" style={{ maxWidth: 200 }} src={`${API_BASE}/characters/${avatarCharacterId}/avatar`} alt="Villain portrait" />}
       {sceneText && (
         <div className="story-output">
           <div className="label">{villainName || "Villain"}</div>
@@ -892,7 +952,10 @@ function VillainPanel({ apiKey, onStorySaved }) {
         </div>
       )}
       {qualityHeaders && qualityBadge(qualityHeaders)}
-      {audioUrl && <audio controls autoPlay src={audioUrl} />}
+      <AudioPlayerCard
+        audioUrl={audioUrl} icon="villain" title={villainName || "Villain"}
+        thumbnailUrl={avatarCharacterId ? `${API_BASE}/characters/${avatarCharacterId}/avatar` : null}
+      />
       {meta && <div className="meta">{meta}</div>}
     </div>
   );
@@ -1058,7 +1121,10 @@ function StoryRow({ apiKey, story, onChanged }) {
             onChange={(e) => setChangedDecision(e.target.value)} />
           <button className="btn small" onClick={doBranch} disabled={busy}>Generate branch</button>
           <div className={`status ${status.cls}`}>{status.text}</div>
-          {resultAudio && <audio controls autoPlay src={resultAudio} />}
+          <AudioPlayerCard
+            audioUrl={resultAudio} icon="branch" title="Branch narration"
+            thumbnailUrl={story.has_image ? `${API_BASE}/stories/${story.id}/image` : null}
+          />
         </div>
       )}
       {openPanel === "lang" && (
@@ -1068,7 +1134,10 @@ function StoryRow({ apiKey, story, onChanged }) {
             <button className="btn small" onClick={doSwitchLanguage} disabled={busy}>Re-render in this language</button>
           </div>
           <div className={`status ${status.cls}`}>{status.text}</div>
-          {resultAudio && <audio controls autoPlay src={resultAudio} />}
+          <AudioPlayerCard
+            audioUrl={resultAudio} icon="narrate" title="Language variant"
+            thumbnailUrl={story.has_image ? `${API_BASE}/stories/${story.id}/image` : null}
+          />
         </div>
       )}
       {openPanel === "comic" && (
@@ -1153,7 +1222,10 @@ function CharacterRow({ apiKey, character, onRevived }) {
             onChange={(e) => setNewSetting(e.target.value)} />
           <button className="btn small" onClick={revive} disabled={busy}>Generate revival</button>
           <div className={`status ${status.cls}`}>{status.text}</div>
-          {audioUrl && <audio controls autoPlay src={audioUrl} />}
+          <AudioPlayerCard
+            audioUrl={audioUrl} icon="users" title={`${character.name} revived`}
+            thumbnailUrl={character.has_avatar ? `${API_BASE}/characters/${character.id}/avatar` : null}
+          />
         </div>
       )}
     </div>
@@ -1470,6 +1542,88 @@ function NavItems({ activeTab, setActiveTab }) {
 }
 
 /* ---------------- Overview / Dashboard ---------------- */
+const CULTURE_PACK_FIELDS = [
+  ["places", "Places", "Real landmarks for scenes that need a setting."],
+  ["festivals", "Festivals", "Real festivals for scenes that need a time/occasion."],
+  ["folklore", "Folklore", "Regional folk-spirit/legend motifs, for horror/mystery genres."],
+  ["deities", "Deities", "Devotional figures/sites, for devotional-genre content. Can be left blank."],
+  ["names", "Names", "Common authentic first names for new characters a story introduces."],
+  ["register_note", "Address register", "How address/formality actually works in this language."],
+];
+
+function CulturePackEditor({ apiKey, language, name, onImageInvalidated }) {
+  const [fields, setFields] = useState(null);
+  const [status, setStatus] = useState({ text: "", cls: "" });
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    setFields(null);
+    fetch(`${API_BASE}/culture/${language}`, { headers: authHeaders(apiKey) })
+      .then((r) => r.json()).then(setFields)
+      .catch((e) => setStatus({ text: e.message || String(e), cls: "error" }));
+  }, [apiKey, language]);
+
+  useEffect(load, [load]);
+
+  const setField = (key, value) => setFields((f) => ({ ...f, [key]: value }));
+
+  const save = async () => {
+    setBusy(true); setStatus({ text: "Saving…", cls: "" });
+    try {
+      const body = {};
+      for (const [key] of CULTURE_PACK_FIELDS) body[key] = fields[key] ?? "";
+      const resp = await fetch(`${API_BASE}/culture/${language}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error(await readError(resp));
+      setFields(await resp.json());
+      setStatus({ text: "Saved. The cultural image will regenerate next time it's viewed.", cls: "ok" });
+      onImageInvalidated(language);
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
+  };
+
+  const reset = async () => {
+    setBusy(true); setStatus({ text: "Resetting to default…", cls: "" });
+    try {
+      const resp = await fetch(`${API_BASE}/culture/${language}/override`, {
+        method: "DELETE", headers: authHeaders(apiKey),
+      });
+      if (!resp.ok) throw new Error(await readError(resp));
+      setFields(await resp.json());
+      setStatus({ text: "Reverted to the built-in default.", cls: "ok" });
+      onImageInvalidated(language);
+    } catch (err) {
+      setStatus({ text: err.message || String(err), cls: "error" });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card culture-editor">
+      <h3>Editing: {name}</h3>
+      {!fields ? (
+        <div className="hint">Loading…</div>
+      ) : (
+        <React.Fragment>
+          {CULTURE_PACK_FIELDS.map(([key, label, hint]) => (
+            <Field key={key} label={label} hint={hint}>
+              <textarea value={fields[key] || ""} onChange={(e) => setField(key, e.target.value)} style={{ minHeight: 56 }} />
+            </Field>
+          ))}
+          <div className="row" style={{ marginTop: 4 }}>
+            <button className="btn" onClick={save} disabled={busy}>Save changes</button>
+            <button className="btn ghost" onClick={reset} disabled={busy}>Reset to default</button>
+          </div>
+          <div className={`status ${status.cls}`}>{status.text}</div>
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
 function CultureGallery({ apiKey }) {
   // Each tile generates a real OpenAI image on first request (cached
   // server-side after that) - loaded lazily per-click, not all 11 at
@@ -1477,35 +1631,59 @@ function CultureGallery({ apiKey }) {
   // 11 image-generation calls.
   const [loaded, setLoaded] = useState({});
   const [loading, setLoading] = useState(null);
+  const [editing, setEditing] = useState(null); // language code, or null
 
   const reveal = (code) => {
     if (loaded[code] || loading === code) return;
     setLoading(code);
   };
 
+  const invalidate = (code) => {
+    // Editing a language's places changes what the cached image should
+    // show - drop the local "already loaded" flag so the tile re-fetches
+    // (the server has already deleted its own cache copy) instead of
+    // silently continuing to display the stale image.
+    setLoaded((l) => { const next = { ...l }; delete next[code]; return next; });
+  };
+
   return (
-    <div className="card">
-      <h3>Explore the culture packs</h3>
-      <p className="hint" style={{ marginBottom: 14 }}>Click a language to generate its representative cultural image - cached after the first time, so it's instant for everyone after.</p>
-      <div className="culture-grid">
-        {LANGUAGES.map(([code, name]) => (
-          <div className="culture-tile" key={code} onClick={() => reveal(code)}>
-            {loaded[code] ? (
-              <img src={`${API_BASE}/culture/${code}/image`} alt={name} />
-            ) : loading === code ? (
-              <img
-                src={`${API_BASE}/culture/${code}/image`} alt={name}
-                onLoad={() => { setLoaded((l) => ({ ...l, [code]: true })); setLoading(null); }}
-                onError={() => setLoading(null)}
-                style={{ display: "none" }}
-              />
-            ) : null}
-            {loading === code && !loaded[code] && <div className="culture-tile-loading">Generating…</div>}
-            {!loaded[code] && loading !== code && <div className="culture-tile-placeholder">✦</div>}
-            <div className="culture-tile-label">{name}</div>
-          </div>
-        ))}
+    <div>
+      <div className="card">
+        <h3>Explore &amp; edit the culture packs</h3>
+        <p className="hint" style={{ marginBottom: 14 }}>Click a tile to generate its representative cultural image - cached after the first time. Use Edit to change what a language's culture pack actually contains.</p>
+        <div className="culture-grid">
+          {LANGUAGES.map(([code, name]) => (
+            <div className="culture-tile" key={code}>
+              <div onClick={() => reveal(code)} style={{ position: "absolute", inset: 0 }}>
+                {loaded[code] ? (
+                  <img src={`${API_BASE}/culture/${code}/image`} alt={name} />
+                ) : loading === code ? (
+                  <img
+                    src={`${API_BASE}/culture/${code}/image`} alt={name}
+                    onLoad={() => { setLoaded((l) => ({ ...l, [code]: true })); setLoading(null); }}
+                    onError={() => setLoading(null)}
+                    style={{ display: "none" }}
+                  />
+                ) : null}
+                {loading === code && !loaded[code] && <div className="culture-tile-loading">Generating…</div>}
+                {!loaded[code] && loading !== code && <div className="culture-tile-placeholder">✦</div>}
+              </div>
+              <button
+                className="culture-tile-edit"
+                onClick={(e) => { e.stopPropagation(); setEditing(editing === code ? null : code); }}
+              >Edit</button>
+              <div className="culture-tile-label">{name}</div>
+            </div>
+          ))}
+        </div>
       </div>
+      {editing && (
+        <CulturePackEditor
+          apiKey={apiKey} language={editing}
+          name={(LANGUAGES.find(([c]) => c === editing) || [, editing])[1]}
+          onImageInvalidated={invalidate}
+        />
+      )}
     </div>
   );
 }

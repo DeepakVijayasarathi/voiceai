@@ -50,7 +50,7 @@ from ratelimit import RateLimitMiddleware
 # docstrings). image_gen.ImageGenError is aliased to avoid shadowing
 # images.ImageGenError, imported just above under the same bare name.
 from image_gen import ImageGenError as CoverImageGenError, generate_character_avatar, generate_story_image
-from culture_images import get_culture_image
+from culture_images import get_culture_image, invalidate_culture_image
 from video_gen import VideoGenError, compose_video
 from sfx import SFX_TYPES, get_sfx_loop
 from voice_profile import PROFILE_NAMES, _PROFILES, assign_profiles, apply_voice_profile, get_speed_multiplier
@@ -63,6 +63,7 @@ from story_gen import (
     generate_continuation,
     generate_story,
     generate_villain,
+    get_effective_cultural_context,
     revive_character,
 )
 
@@ -507,13 +508,68 @@ def languages():
     return {"languages": engine.languages()}
 
 
+class CulturePackUpdate(BaseModel):
+    places: str | None = Field(default=None, description="Real landmarks for scenes that need a setting.")
+    festivals: str | None = Field(default=None, description="Real festivals for scenes that need a time/occasion.")
+    folklore: str | None = Field(default=None, description="Real regional folk-spirit/legend motifs, for horror/mystery genres.")
+    deities: str | None = Field(default=None, description="Real devotional figures/sites, for devotional-genre content. Can be left blank for a language/tradition where that framing doesn't fit.")
+    names: str | None = Field(default=None, description="Common authentic first names for new characters a story introduces.")
+    register_note: str | None = Field(default=None, description="How address/formality actually works in this language, for natural-sounding dialogue.")
+
+
+@app.get("/culture/{language}")
+def get_culture_pack(language: str):
+    """The effective culture pack for `language` - the built-in default
+    (story_gen.LANGUAGE_CULTURAL_CONTEXT) with any admin edit (see PUT
+    below) layered on top field-by-field."""
+    context = get_effective_cultural_context(language)
+    if context is None:
+        raise HTTPException(status_code=404, detail=f"Unknown language '{language}'")
+    return {"language": language, **context}
+
+
+@app.put("/culture/{language}")
+def update_culture_pack(language: str, req: CulturePackUpdate, x_api_key: str | None = Header(default=None)):
+    """Edits `language`'s culture pack - only the fields provided change;
+    omitted fields keep whatever they were before (built-in default or an
+    earlier override). Persisted in the DB so it survives a restart and
+    takes effect on the next generation call - already-generated stories
+    aren't retroactively changed. Editing `places` also invalidates the
+    cached cultural image (see culture_images.py), since that image is
+    generated from this pack's `places` field - the next GET
+    /culture/{language}/image regenerates it from the new value."""
+    _check_auth(x_api_key)
+    if language not in LANGUAGE_CULTURAL_CONTEXT:
+        raise HTTPException(status_code=404, detail=f"Unknown language '{language}'")
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields provided to update")
+    db.save_culture_pack_override(language, fields)
+    if "places" in fields:
+        invalidate_culture_image(language)
+    return {"language": language, **get_effective_cultural_context(language)}
+
+
+@app.delete("/culture/{language}/override")
+def reset_culture_pack(language: str, x_api_key: str | None = Header(default=None)):
+    """Reverts `language`'s culture pack back to the built-in default,
+    discarding any admin edit, and invalidates its cached image so it
+    regenerates from the reverted `places` field."""
+    _check_auth(x_api_key)
+    if language not in LANGUAGE_CULTURAL_CONTEXT:
+        raise HTTPException(status_code=404, detail=f"Unknown language '{language}'")
+    db.delete_culture_pack_override(language)
+    invalidate_culture_image(language)
+    return {"language": language, **get_effective_cultural_context(language)}
+
+
 @app.get("/culture/{language}/image")
 def get_culture_image_endpoint(language: str):
-    """A representative cultural image for `language` - one of the real
-    landmarks curated in story_gen.LANGUAGE_CULTURAL_CONTEXT, generated
-    once via OpenAI Images and cached to disk thereafter (see
-    culture_images.py). Not opt-in/per-request - there's only ever one of
-    these per language, generated lazily on first access."""
+    """A representative cultural image for `language`, generated from its
+    effective culture pack (see GET /culture/{language}) via OpenAI
+    Images and cached to disk thereafter (see culture_images.py). Not
+    opt-in/per-request - there's only ever one of these per language,
+    generated lazily on first access, regenerated after a `places` edit."""
     if language not in engine.languages():
         raise HTTPException(status_code=404, detail=f"Unsupported language '{language}'. Supported: {list(engine.languages())}")
     try:

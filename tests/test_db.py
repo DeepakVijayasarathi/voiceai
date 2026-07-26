@@ -195,3 +195,23 @@ def test_get_variants_returns_linked_language_variants(fresh_db):
     variants = fresh_db.get_variants(original_id)
     assert [v["id"] for v in variants] == [variant_id]
     assert variants[0]["language"] == "tam"
+
+
+def test_get_culture_pack_override_none_when_unset(fresh_db):
+    assert fresh_db.get_culture_pack_override("tam") is None
+
+
+def test_save_culture_pack_override_partial_update_preserves_other_fields(fresh_db):
+    fresh_db.save_culture_pack_override("tam", {"places": "a new place"})
+    fresh_db.save_culture_pack_override("tam", {"festivals": "a new festival"})
+
+    override = fresh_db.get_culture_pack_override("tam")
+    assert override["places"] == "a new place"
+    assert override["festivals"] == "a new festival"
+    assert override["folklore"] is None
+
+
+def test_delete_culture_pack_override(fresh_db):
+    fresh_db.save_culture_pack_override("tam", {"places": "a new place"})
+    fresh_db.delete_culture_pack_override("tam")
+    assert fresh_db.get_culture_pack_override("tam") is None

@@ -84,6 +84,16 @@ def init_db() -> None:
                 rewritten INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS culture_pack_overrides (
+                language TEXT PRIMARY KEY,
+                places TEXT,
+                festivals TEXT,
+                folklore TEXT,
+                deities TEXT,
+                names TEXT,
+                register_note TEXT,
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
         """)
         conn.commit()
         # CREATE TABLE IF NOT EXISTS above is a no-op against an existing
@@ -324,6 +334,53 @@ def list_quality_backlog(limit: int = 50) -> list[dict]:
         entry["rewritten"] = bool(entry["rewritten"])
         results.append(entry)
     return results
+
+
+_CULTURE_PACK_FIELDS = ("places", "festivals", "folklore", "deities", "names", "register_note")
+
+
+def save_culture_pack_override(language: str, fields: dict) -> None:
+    """Upserts an admin edit to one language's culture pack - only the
+    keys present in `fields` are set, others keep their previous override
+    (or stay unset, falling through to the built-in default - see
+    story_gen.get_effective_cultural_context). Persisted so an edit
+    survives a service restart, unlike the in-memory constant it
+    overrides."""
+    conn = _get_conn()
+    existing = get_culture_pack_override(language) or {}
+    merged = {f: fields.get(f, existing.get(f)) for f in _CULTURE_PACK_FIELDS}
+    with _lock:
+        conn.execute(
+            """
+            INSERT INTO culture_pack_overrides (language, places, festivals, folklore, deities, names, register_note, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(language) DO UPDATE SET
+                places=excluded.places, festivals=excluded.festivals, folklore=excluded.folklore,
+                deities=excluded.deities, names=excluded.names, register_note=excluded.register_note,
+                updated_at=excluded.updated_at
+            """,
+            (language, merged["places"], merged["festivals"], merged["folklore"],
+             merged["deities"], merged["names"], merged["register_note"]),
+        )
+        conn.commit()
+
+
+def get_culture_pack_override(language: str) -> dict | None:
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute(
+            "SELECT places, festivals, folklore, deities, names, register_note, updated_at "
+            "FROM culture_pack_overrides WHERE language = ?",
+            (language,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_culture_pack_override(language: str) -> None:
+    conn = _get_conn()
+    with _lock:
+        conn.execute("DELETE FROM culture_pack_overrides WHERE language = ?", (language,))
+        conn.commit()
 
 
 def get_variants(story_id: int) -> list[dict]:
