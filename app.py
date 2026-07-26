@@ -429,10 +429,16 @@ def _maybe_generate_scene_images(
     """Shared scene-image pipeline used by both /tts (images=true) and
     /dream-to-story: generates up to max_images scene illustrations,
     persists them, and - only if at least one succeeded - saves the
-    narration audio to disk (needed later by video export). Returns the
-    number of images actually generated. Best-effort: any failure here is
-    logged and swallowed, never fails the request that's already produced
-    valid narration audio."""
+    narration audio to disk (needed later by video export). The first
+    successful scene image also doubles as the story's cover (stories.image,
+    same column /dream-to-story's visual=true fills) unless one already
+    exists - without this, a story generated via /tts never gets has_image
+    set even though it has real generated art, so it'd show no thumbnail
+    anywhere a cover is expected (Stories & Branches, Dub Studio's source
+    picker, AudioPlayerCard, ...), only inside its own time-mapped
+    storyboard. Returns the number of images actually generated.
+    Best-effort: any failure here is logged and swallowed, never fails the
+    request that's already produced valid narration audio."""
     image_count = 0
     try:
         beats = generate_visual_prompts(story_text, language, character_names, max_beats=max_images)
@@ -445,6 +451,8 @@ def _maybe_generate_scene_images(
                     story_id, idx, beat["start_time_s"], beat["end_time_s"],
                     beat["excerpt"], beat["visual_prompt"], url,
                 )
+                if image_count == 0 and db.get_story_image(story_id) is None:
+                    db.save_story_image(story_id, image_bytes)
                 image_count += 1
             except ImageGenError as e:
                 logger.warning("scene image %d failed for story_id=%s (non-fatal): %s", idx, story_id, e)

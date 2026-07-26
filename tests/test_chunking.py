@@ -88,6 +88,9 @@ def test_maybe_generate_scene_images_saves_audio_when_at_least_one_succeeds(monk
     monkeypatch.setattr(app, "save_scene_image", lambda story_id, idx, data: f"/static/images/{story_id}/{idx}.png")
     save_image_calls = []
     monkeypatch.setattr(app.db, "save_scene_image", lambda *a, **k: save_image_calls.append(a))
+    monkeypatch.setattr(app.db, "get_story_image", lambda story_id: None)
+    cover_save_calls = []
+    monkeypatch.setattr(app.db, "save_story_image", lambda *a, **k: cover_save_calls.append(a))
     audio_save_calls = []
     monkeypatch.setattr(app, "_save_story_audio", lambda *a, **k: audio_save_calls.append(a))
 
@@ -97,6 +100,26 @@ def test_maybe_generate_scene_images_saves_audio_when_at_least_one_succeeds(monk
     assert count == 1
     assert len(save_image_calls) == 1
     assert len(audio_save_calls) == 1
+    # First scene image also becomes the story's cover so it shows up
+    # anywhere has_image is checked (Stories & Branches, Dub Studio, ...),
+    # not just inside its own storyboard.
+    assert cover_save_calls == [(1, b"fake-png")]
+
+
+def test_maybe_generate_scene_images_does_not_overwrite_existing_cover(monkeypatch):
+    monkeypatch.setattr(app, "generate_visual_prompts", lambda *a, **k: [{"excerpt": "hello", "visual_prompt": "a prompt"}])
+    monkeypatch.setattr(app, "generate_scene_image", lambda prompt: b"fake-png")
+    monkeypatch.setattr(app, "save_scene_image", lambda story_id, idx, data: f"/static/images/{story_id}/{idx}.png")
+    monkeypatch.setattr(app.db, "save_scene_image", lambda *a, **k: None)
+    monkeypatch.setattr(app.db, "get_story_image", lambda story_id: b"existing-cover-bytes")
+    cover_save_calls = []
+    monkeypatch.setattr(app.db, "save_story_image", lambda *a, **k: cover_save_calls.append(a))
+    monkeypatch.setattr(app, "_save_story_audio", lambda *a, **k: None)
+
+    app._maybe_generate_scene_images(
+        4, 1, "hello world", "hin", [], [(0, 1000)], ["hello world"], np.zeros(1000, dtype=np.float32), 1000,
+    )
+    assert cover_save_calls == []
 
 
 def test_maybe_generate_scene_images_skips_audio_save_when_all_images_fail(monkeypatch):
