@@ -235,11 +235,16 @@
         <input type="checkbox" id="dreamVisual">
         <label for="dreamVisual">Also generate a cover image (via OpenAI's image API - slower, ~30-60s extra)</label>
       </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="dreamVideo">
+        <label for="dreamVideo">Also compose a downloadable video (cover image + narration, via ffmpeg - implies the cover image above; a static image held for the audio, not AI-generated moving video)</label>
+      </div>
       <button id="dreamBtn">Generate story</button>
       <div id="dreamStatus" class="status"></div>
       <div id="dreamOutput" class="story-output"><div class="story-label">Generated story</div><div id="dreamOutputText"></div></div>
       <img id="dreamImage" style="display:none; width:100%; border-radius:8px; margin-top:10px;">
       <audio id="dreamPlayer" controls></audio>
+      <video id="dreamVideoPlayer" controls style="display:none; width:100%; border-radius:8px; margin-top:10px;"></video>
       <div id="dreamMeta" class="meta"></div>
     </div>
 
@@ -534,13 +539,17 @@ $("dreamBtn").addEventListener("click", async () => {
   const player = $("dreamPlayer");
   const meta = $("dreamMeta");
   const imageEl = $("dreamImage");
+  const videoEl = $("dreamVideoPlayer");
   const wantsVisual = $("dreamVisual").checked;
+  const wantsVideo = $("dreamVideo").checked;
   statusEl.className = "status";
   statusEl.textContent = "";
   output.style.display = "none";
   player.style.display = "none";
   meta.style.display = "none";
   imageEl.style.display = "none";
+  videoEl.style.display = "none";
+  videoEl.src = "";
 
   if (!description) {
     statusEl.className = "status error";
@@ -550,7 +559,9 @@ $("dreamBtn").addEventListener("click", async () => {
 
   localStorage.setItem("indic_tts_api_key", $("apiKey").value.trim());
   $("dreamBtn").disabled = true;
-  statusEl.textContent = wantsVisual
+  statusEl.textContent = wantsVideo
+    ? "Writing, narrating, painting a cover image, and composing a video (can take 30-90s)..."
+    : wantsVisual
     ? "Writing, narrating, and painting a cover image (the image alone can take 30-60s)..."
     : "Writing and narrating (this calls OpenAI, then synthesizes)...";
   const t0 = performance.now();
@@ -559,7 +570,7 @@ $("dreamBtn").addEventListener("click", async () => {
     const resp = await fetch(API_BASE + "/dream-to-story", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ description, language: $("dreamLang").value, visual: wantsVisual }),
+      body: JSON.stringify({ description, language: $("dreamLang").value, visual: wantsVisual, video: wantsVideo }),
     });
     if (!resp.ok) {
       let detail = resp.statusText;
@@ -572,6 +583,7 @@ $("dreamBtn").addEventListener("click", async () => {
     const charIds = resp.headers.get("X-Character-Ids");
     const hasImage = resp.headers.get("X-Has-Image") === "true";
     const imageErrorB64 = resp.headers.get("X-Image-Error-B64");
+    const videoAvailable = resp.headers.get("X-Video-Available") === "true";
     const blob = await resp.blob();
     const elapsedMs = Math.round(performance.now() - t0);
 
@@ -579,13 +591,23 @@ $("dreamBtn").addEventListener("click", async () => {
       $("dreamOutputText").textContent = b64ToUtf8(storyB64);
       output.style.display = "block";
     }
-    player.src = URL.createObjectURL(blob);
-    player.style.display = "block";
-    player.play().catch(() => {});
+
+    if (videoAvailable && storyId) {
+      // Video already carries the same narration as its audio track -
+      // show the video player (auto-play) and skip the separate audio
+      // player so the narration doesn't play twice at once.
+      videoEl.src = `${API_BASE}/stories/${storyId}/video`;
+      videoEl.style.display = "block";
+      videoEl.play().catch(() => {});
+    } else {
+      player.src = URL.createObjectURL(blob);
+      player.style.display = "block";
+      player.play().catch(() => {});
+    }
 
     if (hasImage && storyId) {
       imageEl.src = `${API_BASE}/stories/${storyId}/image`;
-      imageEl.style.display = "block";
+      imageEl.style.display = videoAvailable ? "none" : "block"; // video already shows the cover frame
     }
 
     statusEl.className = "status ok";
@@ -593,10 +615,14 @@ $("dreamBtn").addEventListener("click", async () => {
     meta.style.display = "block";
     const charNote = charIds ? ` · characters saved: ${charIds}` : " · no named characters found";
     let imageNote = "";
-    if (wantsVisual) {
+    if (wantsVisual || wantsVideo) {
       imageNote = hasImage ? " · image generated" : ` · image failed: ${imageErrorB64 ? b64ToUtf8(imageErrorB64) : "unknown error"}`;
     }
-    meta.textContent = `Story #${storyId} · ${(elapsedMs / 1000).toFixed(1)}s${charNote}${imageNote}`;
+    let videoNote = "";
+    if (wantsVideo) {
+      videoNote = videoAvailable ? " · video composed" : " · video unavailable (image generation failed)";
+    }
+    meta.textContent = `Story #${storyId} · ${(elapsedMs / 1000).toFixed(1)}s${charNote}${imageNote}${videoNote}`;
   } catch (err) {
     statusEl.className = "status error";
     statusEl.textContent = err.message || String(err);
