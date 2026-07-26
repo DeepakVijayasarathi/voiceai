@@ -708,6 +708,10 @@ function NarratePanel({ apiKey }) {
 
   return (
     <div className="card">
+      <div className="usp-banner">
+        <div className="t">One engine, every language</div>
+        <p>Your exact text, narrated - not rewritten - in any of 11 Indian languages, with background music generated live to match the mood of what you wrote. Want the story itself culturally retold per language, not just spoken? That's Dream to Story and Dub Studio.</p>
+      </div>
       <h3>Text to speech</h3>
 
       {step === "compose" && (
@@ -954,8 +958,8 @@ function DreamPanel({ apiKey, onStorySaved }) {
   return (
     <div className="card">
       <div className="usp-banner">
-        <div className="t">State, not script</div>
-        <p>Describe a scene once. Named characters are auto-extracted and saved, the story is scored for cultural/emotional quality before narration, and it comes back with a generated thumbnail by default.</p>
+        <div className="t">One story soul, infinite skins</div>
+        <p>Describe a scene once. It's written through your chosen language's own culture pack - real places, festivals, folklore and names, not a generic backdrop - named characters are auto-extracted and saved, the story is scored for cultural/emotional quality before narration, and it comes back with a generated thumbnail by default.</p>
       </div>
       <h3>Dream to Story</h3>
       <Field label="Describe a dream, memory, or scene">
@@ -1919,18 +1923,10 @@ function CulturePackEditor({ apiKey, language, name, onImageInvalidated }) {
 }
 
 function CultureGallery({ apiKey }) {
-  // Each tile generates a real OpenAI image on first request (cached
-  // server-side after that) - loaded lazily per-click, not all 11 at
-  // once on dashboard load, so opening this tab never silently spends
-  // 11 image-generation calls.
   const [loaded, setLoaded] = useState({});
-  const [loading, setLoading] = useState(null);
+  const [failed, setFailed] = useState({});
+  const [imageVersion, setImageVersion] = useState({});
   const [editing, setEditing] = useState(null); // language code, or null
-
-  const reveal = (code) => {
-    if (loaded[code] || loading === code) return;
-    setLoading(code);
-  };
 
   const invalidate = (code) => {
     // Editing a language's places changes what the cached image should
@@ -1938,29 +1934,30 @@ function CultureGallery({ apiKey }) {
     // (the server has already deleted its own cache copy) instead of
     // silently continuing to display the stale image.
     setLoaded((l) => { const next = { ...l }; delete next[code]; return next; });
+    setFailed((f) => { const next = { ...f }; delete next[code]; return next; });
+    setImageVersion((v) => ({ ...v, [code]: (v[code] || 0) + 1 }));
   };
 
   return (
     <div>
       <div className="card">
         <h3>Explore &amp; edit the culture packs</h3>
-        <p className="hint" style={{ marginBottom: 14 }}>Click a tile to generate its representative cultural image - cached after the first time. Use Edit to change what a language's culture pack actually contains.</p>
+        <p className="hint" style={{ marginBottom: 14 }}>Representative cultural images load automatically and stay cached after the first generation. Use Edit to change what a language's culture pack actually contains.</p>
         <div className="culture-grid">
           {LANGUAGES.map(([code, name]) => (
             <div className="culture-tile" key={code}>
-              <div onClick={() => reveal(code)} style={{ position: "absolute", inset: 0 }}>
-                {loaded[code] ? (
-                  <img src={`${API_BASE}/culture/${code}/image`} alt={name} />
-                ) : loading === code ? (
+              <div style={{ position: "absolute", inset: 0 }}>
+                {!failed[code] && (
                   <img
-                    src={`${API_BASE}/culture/${code}/image`} alt={name}
-                    onLoad={() => { setLoaded((l) => ({ ...l, [code]: true })); setLoading(null); }}
-                    onError={() => setLoading(null)}
-                    style={{ display: "none" }}
+                    src={`${API_BASE}/culture/${code}/image?v=${imageVersion[code] || 0}`}
+                    alt=""
+                    onLoad={() => setLoaded((l) => ({ ...l, [code]: true }))}
+                    onError={() => setFailed((f) => ({ ...f, [code]: true }))}
+                    style={{ opacity: loaded[code] ? 1 : 0 }}
                   />
-                ) : null}
-                {loading === code && !loaded[code] && <div className="culture-tile-loading">Generating…</div>}
-                {!loaded[code] && loading !== code && <div className="culture-tile-placeholder">✦</div>}
+                )}
+                {!loaded[code] && !failed[code] && <div className="culture-tile-loading">Generating…</div>}
+                {failed[code] && <div className="culture-tile-placeholder">✦</div>}
               </div>
               <button
                 className="culture-tile-edit"
