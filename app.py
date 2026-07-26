@@ -11,6 +11,7 @@ presets are a documented, approximate speed/expressiveness knob, not true
 emotional TTS; emotion='auto' classifies the text's tone via OpenAI.
 """
 import base64
+import inspect
 import io
 import logging
 import os
@@ -25,16 +26,25 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 import db
-from bgm import GENRES, get_bgm_loop, mix_with_bgm, mix_with_scene_bgm
+from bgm import GENRES, _generate_track, get_bgm_loop, mix_with_bgm, mix_with_scene_bgm
 from clone import CloneError, clone_speech
 from emotion import detect_emotion, detect_scenes_batch
-from engine import TTSEngine
+from engine import (
+    TTSEngine,
+    _DEFAULT_NOISE_SCALE,
+    _DEFAULT_NOISE_SCALE_DURATION,
+    _MAX_SYNTH_RETRIES,
+    _MIN_CHARS_PER_SEC,
+)
 from lang_detect import detect_language
 from mixed_lang import resolve_mixed_language
 from normalize import normalize_text
 from ratelimit import RateLimitMiddleware
-from voice_profile import assign_profiles, apply_voice_profile, get_speed_multiplier
+from sfx import SFX_TYPES, get_sfx_loop
+from voice_profile import PROFILE_NAMES, _PROFILES, assign_profiles, apply_voice_profile, get_speed_multiplier
 from story_gen import (
+    LANGUAGE_CULTURAL_CONTEXT,
+    TARGET_CHAR_BUDGET,
     StoryGenError,
     extract_characters,
     generate_continuation,
@@ -335,6 +345,64 @@ def warmup():
 @app.get("/languages")
 def languages():
     return {"languages": engine.languages()}
+
+
+@app.get("/config")
+def config():
+    """Live runtime configuration - every env-derived setting (secrets
+    reported as set/unset, never as values) plus the in-code tunable
+    constants that actually shape behavior (chunk sizes, BGM/SFX levels
+    and duck amounts, voice profile ranges, etc.). A JSON mirror of
+    CONFIG.md that can't go stale the way a static doc can, since it
+    reads the values directly from the running process."""
+    bgm_defaults = inspect.signature(mix_with_scene_bgm).parameters
+    return {
+        "env": {
+            "INDIC_TTS_API_KEY_set": bool(API_KEY),
+            "INDIC_TTS_THREADS": CPU_THREADS,
+            "INDIC_TTS_RATE_LIMIT_PER_MIN": int(os.environ.get("INDIC_TTS_RATE_LIMIT_PER_MIN", "60")),
+            "INDIC_TTS_DB_PATH": db.DB_PATH,
+            "OPENAI_API_KEY_set": bool(os.environ.get("OPENAI_API_KEY")),
+            "OPENAI_STORY_MODEL": os.environ.get("OPENAI_STORY_MODEL", "gpt-4o"),
+            "OPENAI_EMOTION_MODEL": os.environ.get("OPENAI_EMOTION_MODEL", "gpt-4o"),
+            "XLIT_BASE_URL": os.environ.get("XLIT_BASE_URL", "http://127.0.0.1:8501"),
+            "XLIT_API_KEY_set": bool(os.environ.get("XLIT_API_KEY")),
+            "INDICF5_BASE_URL": os.environ.get("INDICF5_BASE_URL", "http://127.0.0.1:8500"),
+            "INDICF5_API_KEY_set": bool(os.environ.get("INDICF5_API_KEY")),
+        },
+        "synthesis": {
+            "max_text_len": MAX_TEXT_LEN,
+            "chunk_char_budget": _CHUNK_CHAR_BUDGET,
+            "dialogue_chunk_char_budget": _DIALOGUE_CHUNK_CHAR_BUDGET,
+            "inter_chunk_silence_s": _INTER_CHUNK_SILENCE_S,
+            "min_chars_per_sec_before_retry": _MIN_CHARS_PER_SEC,
+            "max_synth_retries": _MAX_SYNTH_RETRIES,
+            "default_noise_scale": _DEFAULT_NOISE_SCALE,
+            "default_noise_scale_duration": _DEFAULT_NOISE_SCALE_DURATION,
+            "emotion_presets": {k: {"speed": v[0], "noise_scale": v[1]} for k, v in EMOTION_PRESETS.items()},
+        },
+        "bgm_sfx_mix": {
+            "bgm_level": bgm_defaults["bgm_level"].default,
+            "sfx_level": bgm_defaults["sfx_level"].default,
+            "bgm_duck_amount": bgm_defaults["bgm_duck_amount"].default,
+            "sfx_duck_amount": bgm_defaults["sfx_duck_amount"].default,
+            "genre_loop_duration_s": inspect.signature(_generate_track).parameters["duration_s"].default,
+            "sfx_loop_duration_s": inspect.signature(get_sfx_loop).parameters["duration_s"].default,
+            "sfx_types": list(SFX_TYPES),
+            "genres": list(GENRES.keys()),
+        },
+        "voice_profiles": {
+            "profile_names": PROFILE_NAMES,
+            "profiles": {
+                name: {"pitch_shift_semitones": v[0], "shelf_eq_tilt_db": v[1], "speed_multiplier": v[2]}
+                for name, v in _PROFILES.items()
+            },
+        },
+        "story_gen": {
+            "target_char_budget": TARGET_CHAR_BUDGET,
+            "languages_with_cultural_context": list(LANGUAGE_CULTURAL_CONTEXT.keys()),
+        },
+    }
 
 
 @app.get("/metrics")

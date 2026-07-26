@@ -135,6 +135,9 @@ Forces one synthesis per language; returns per-language timing. Useful post-depl
 ### `GET /metrics` (no auth)
 Prometheus text format: `indic_tts_requests_total`, `indic_tts_requests_failed_total`, `indic_tts_synth_seconds_total`.
 
+### `GET /config` (no auth)
+Live runtime configuration, read directly from the running process (so it can't go stale the way a static doc can) — every env-derived setting (secrets reported as `*_set: true/false`, never as values) plus the in-code tunable constants that actually shape behavior: chunk sizes, retry thresholds, BGM/SFX levels and duck amounts, all 7 voice profiles' pitch/EQ/speed values, emotion presets, and which languages have cultural-context grounding. See `CONFIG.md` for the human-readable walkthrough of what each value means and why.
+
 ---
 
 ## What's deliberately NOT here
