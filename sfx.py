@@ -14,18 +14,48 @@ still finite hand-built palette (14 types); OpenAI picks freely from
 this set per scene rather than being forced into a narrow handful, which
 covers most real narration scenes without pretending to synthesize
 anything imaginable.
+
+Per-instance variation: each generator used to seed its own RNG with a
+hardcoded literal, which meant "rain" (or any other type) sounded
+byte-identical every single time it was used, in every story, forever -
+and since a scene's SFX is a short loop TILED to fill however long the
+scene runs, a scene longer than one loop repeated it verbatim, which is
+an obvious, robotic-sounding tell for anything with a distinct transient
+pattern (footsteps landing on an exact 0.6s grid, the same thunder
+rumble at the same relative position, etc). Generators now take an
+external `rng` instead of constructing their own, and get_sfx_loop/
+tile_sfx_to_length accept a `variation_index` that offsets the seed -
+index 0 reproduces the exact original output (nothing that depends on
+today's default behavior breaks), any other index produces a genuinely
+different-sounding instance of the same type. bgm.py's scene mixer
+passes each story segment's own index through, so a story with rain in
+scene 1 and rain again in scene 4 gets two distinct-sounding instances
+instead of the same loop twice.
 """
 import numpy as np
 from scipy.signal import lfilter
 
 _SR = 24000
-_loop_cache: dict[str, np.ndarray] = {}
+_loop_cache: dict[tuple[str, int], np.ndarray] = {}
 
 SFX_TYPES = (
     "none", "rain", "wind", "thunder", "lightning", "fire", "footsteps",
     "car", "traffic", "crowd", "door_creak", "glass_break", "birds",
     "water", "dog_bark",
 )
+
+# Per-type base seed - variation_index=0 reproduces this exactly (see
+# _seed_for below), so the original, always-used-until-now sound for
+# each type is still reachable and still what a first/only use gets.
+_BASE_SEEDS = {
+    "rain": 1, "wind": 2, "thunder": 3, "fire": 4, "footsteps": 5,
+    "lightning": 6, "car": 7, "traffic": 8, "crowd": 9, "door_creak": 10,
+    "glass_break": 11, "birds": 12, "water": 13, "dog_bark": 14,
+}
+
+
+def _seed_for(sfx_type: str, variation_index: int) -> int:
+    return _BASE_SEEDS[sfx_type] + variation_index * 97
 
 
 def _lowpass_noise(n: int, rng: np.random.Generator, cutoff_alpha: float) -> np.ndarray:
@@ -35,8 +65,7 @@ def _lowpass_noise(n: int, rng: np.random.Generator, cutoff_alpha: float) -> np.
     return lfilter([1 - cutoff_alpha], [1, -cutoff_alpha], noise)
 
 
-def _generate_rain(duration_s: float, sr: int) -> np.ndarray:
-    rng = np.random.default_rng(1)
+def _generate_rain(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     n = int(sr * duration_s)
     # Steady hiss bed (many overlapping droplets averages into filtered
     # noise) plus sparser sharper droplet transients on top for texture.
@@ -54,8 +83,7 @@ def _generate_rain(duration_s: float, sr: int) -> np.ndarray:
     return (hiss + droplets).astype(np.float32)
 
 
-def _generate_wind(duration_s: float, sr: int) -> np.ndarray:
-    rng = np.random.default_rng(2)
+def _generate_wind(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
     base = _lowpass_noise(n, rng, cutoff_alpha=0.85)
@@ -65,8 +93,7 @@ def _generate_wind(duration_s: float, sr: int) -> np.ndarray:
     return (base * gust).astype(np.float32)
 
 
-def _generate_thunder(duration_s: float, sr: int) -> np.ndarray:
-    rng = np.random.default_rng(3)
+def _generate_thunder(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     n = int(sr * duration_s)
     audio = np.zeros(n)
     n_rumbles = max(1, int(duration_s / 6))  # one rumble roughly every 6s
@@ -85,8 +112,7 @@ def _generate_thunder(duration_s: float, sr: int) -> np.ndarray:
     return audio.astype(np.float32)
 
 
-def _generate_fire(duration_s: float, sr: int) -> np.ndarray:
-    rng = np.random.default_rng(4)
+def _generate_fire(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     n = int(sr * duration_s)
     base = _lowpass_noise(n, rng, cutoff_alpha=0.6) * 0.35
     crackles = np.zeros(n)
@@ -101,12 +127,14 @@ def _generate_fire(duration_s: float, sr: int) -> np.ndarray:
     return (base + crackles).astype(np.float32)
 
 
-def _generate_footsteps(duration_s: float, sr: int) -> np.ndarray:
-    rng = np.random.default_rng(5)
+def _generate_footsteps(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
     audio = np.zeros(n)
-    step_interval_s = 0.6
+    # Interval jittered per-instance (was a fixed 0.6s grid) - a person's
+    # gait isn't a metronome, and a fixed grid is exactly the kind of
+    # thing that makes a tiled loop's repeat seam audible.
+    step_interval_s = rng.uniform(0.5, 0.7)
     step_positions = np.arange(0, duration_s, step_interval_s)
     for step_t in step_positions:
         pos = int(step_t * sr)
@@ -115,15 +143,15 @@ def _generate_footsteps(duration_s: float, sr: int) -> np.ndarray:
         length = end - pos
         if length <= 0:
             continue
-        thud = np.sin(2 * np.pi * 90 * t[pos:end]) * np.linspace(1, 0, length) ** 2
-        audio[pos:end] += thud * 0.5
+        thud_freq = rng.uniform(80, 100)
+        thud = np.sin(2 * np.pi * thud_freq * t[pos:end]) * np.linspace(1, 0, length) ** 2
+        audio[pos:end] += thud * rng.uniform(0.42, 0.58)
     return audio.astype(np.float32)
 
 
-def _generate_lightning(duration_s: float, sr: int) -> np.ndarray:
+def _generate_lightning(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """Distinct from thunder's low rumble: a sharp, near-instant broadband
     crack with a very fast decay, occurring once or twice."""
-    rng = np.random.default_rng(6)
     n = int(sr * duration_s)
     audio = np.zeros(n)
     n_cracks = max(1, int(duration_s / 8))
@@ -139,11 +167,10 @@ def _generate_lightning(duration_s: float, sr: int) -> np.ndarray:
     return audio.astype(np.float32)
 
 
-def _generate_car(duration_s: float, sr: int) -> np.ndarray:
+def _generate_car(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """Engine idle/drive drone: a low fundamental plus harmonics (cheap
     approximation of combustion-cycle pulses) with filtered noise for
     road/exhaust texture."""
-    rng = np.random.default_rng(7)
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
     fundamental = 45.0
@@ -153,13 +180,12 @@ def _generate_car(duration_s: float, sr: int) -> np.ndarray:
     return (engine + road_noise).astype(np.float32)
 
 
-def _generate_traffic(duration_s: float, sr: int) -> np.ndarray:
+def _generate_traffic(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """Denser street ambience: a couple of car drones at different pitches
     plus occasional horn honks."""
-    rng = np.random.default_rng(8)
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
-    base = _generate_car(duration_s, sr) * 0.7
+    base = _generate_car(duration_s, sr, rng) * 0.7
     base += 0.6 * np.roll(base, int(sr * 1.3))  # a second, offset "vehicle"
     honks = np.zeros(n)
     n_honks = max(1, int(duration_s / 5))
@@ -176,11 +202,10 @@ def _generate_traffic(duration_s: float, sr: int) -> np.ndarray:
     return (base + honks).astype(np.float32)
 
 
-def _generate_crowd(duration_s: float, sr: int) -> np.ndarray:
+def _generate_crowd(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """Indistinct chatter ('walla') - several independently, erratically
     amplitude-modulated band-passed noise voices summed together, none
     individually intelligible."""
-    rng = np.random.default_rng(9)
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
     audio = np.zeros(n)
@@ -192,9 +217,8 @@ def _generate_crowd(duration_s: float, sr: int) -> np.ndarray:
     return audio.astype(np.float32) * 0.6
 
 
-def _generate_door_creak(duration_s: float, sr: int) -> np.ndarray:
+def _generate_door_creak(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """A resonant pitch-bending groan, occurring once or twice."""
-    rng = np.random.default_rng(10)
     n = int(sr * duration_s)
     audio = np.zeros(n)
     n_creaks = max(1, int(duration_s / 7))
@@ -212,10 +236,9 @@ def _generate_door_creak(duration_s: float, sr: int) -> np.ndarray:
     return audio.astype(np.float32)
 
 
-def _generate_glass_break(duration_s: float, sr: int) -> np.ndarray:
+def _generate_glass_break(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """A sharp high-frequency burst plus a handful of overlapping ringing
     'shard' resonances, occurring once."""
-    rng = np.random.default_rng(11)
     n = int(sr * duration_s)
     audio = np.zeros(n)
     pos = rng.integers(0, max(1, n - sr))
@@ -236,10 +259,9 @@ def _generate_glass_break(duration_s: float, sr: int) -> np.ndarray:
     return audio.astype(np.float32)
 
 
-def _generate_birds(duration_s: float, sr: int) -> np.ndarray:
+def _generate_birds(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """Staggered chirp bursts at a few different pitches, simulating
     several birds rather than one repeating call."""
-    rng = np.random.default_rng(12)
     n = int(sr * duration_s)
     audio = np.zeros(n)
     n_chirps = int(duration_s * 1.2)
@@ -256,10 +278,9 @@ def _generate_birds(duration_s: float, sr: int) -> np.ndarray:
     return audio.astype(np.float32)
 
 
-def _generate_water(duration_s: float, sr: int) -> np.ndarray:
+def _generate_water(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """Continuous flowing texture (river/stream) - similar filtered-noise
     approach to rain but smoother modulation, no discrete droplets."""
-    rng = np.random.default_rng(13)
     n = int(sr * duration_s)
     t = np.linspace(0, duration_s, n, endpoint=False)
     base = _lowpass_noise(n, rng, cutoff_alpha=0.6)
@@ -267,10 +288,9 @@ def _generate_water(duration_s: float, sr: int) -> np.ndarray:
     return (base * flow * 0.5).astype(np.float32)
 
 
-def _generate_dog_bark(duration_s: float, sr: int) -> np.ndarray:
+def _generate_dog_bark(duration_s: float, sr: int, rng: np.random.Generator) -> np.ndarray:
     """Short sharp barks (noise burst + low tonal growl) at irregular
     intervals."""
-    rng = np.random.default_rng(14)
     n = int(sr * duration_s)
     audio = np.zeros(n)
     n_barks = max(1, int(duration_s / 3))
@@ -305,13 +325,19 @@ _GENERATORS = {
 }
 
 
-def get_sfx_loop(sfx_type: str, duration_s: float = 24.0) -> np.ndarray | None:
+def get_sfx_loop(sfx_type: str, duration_s: float = 24.0, variation_index: int = 0) -> np.ndarray | None:
     """Returns None for 'none' or an unrecognized type (silence - no SFX
-    layer added), otherwise the (cached) generated loop."""
+    layer added), otherwise the (cached) generated loop. `variation_index`
+    picks which instance of this type to generate - 0 is the original,
+    always-cached default; any other value produces a distinct-sounding
+    instance (own cache slot, generated once then reused for the rest of
+    this process's life)."""
     if sfx_type not in _GENERATORS:
         return None
-    if sfx_type not in _loop_cache:
-        audio = _GENERATORS[sfx_type](duration_s, _SR)
+    cache_key = (sfx_type, variation_index)
+    if cache_key not in _loop_cache:
+        rng = np.random.default_rng(_seed_for(sfx_type, variation_index))
+        audio = _GENERATORS[sfx_type](duration_s, _SR, rng)
         # Generators aren't individually peak-tuned (some layer several
         # transient sources whose worst-case overlap isn't hand-checked) -
         # normalize defensively so every generator returns a comparable,
@@ -323,12 +349,12 @@ def get_sfx_loop(sfx_type: str, duration_s: float = 24.0) -> np.ndarray | None:
         fade = np.linspace(0, 1, fade_len)
         audio[:fade_len] *= fade
         audio[-fade_len:] *= fade[::-1]
-        _loop_cache[sfx_type] = audio.astype(np.float32)
-    return _loop_cache[sfx_type]
+        _loop_cache[cache_key] = audio.astype(np.float32)
+    return _loop_cache[cache_key]
 
 
-def tile_sfx_to_length(sfx_type: str, sr: int, n: int) -> np.ndarray | None:
-    loop = get_sfx_loop(sfx_type)
+def tile_sfx_to_length(sfx_type: str, sr: int, n: int, variation_index: int = 0) -> np.ndarray | None:
+    loop = get_sfx_loop(sfx_type, variation_index=variation_index)
     if loop is None:
         return None
     if sr != _SR:

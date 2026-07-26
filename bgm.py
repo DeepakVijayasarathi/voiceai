@@ -319,9 +319,13 @@ def _build_crossfaded_track(
     SFX layer: each segment (except the last) generates extra audio past
     its official boundary, overlapping into the next segment's region, so
     there's a real overlap zone where both fade against each other rather
-    than one cutting off before the next begins. `tile_fn(label, sr, len)`
-    returns the audio for a segment's label, or None to contribute silence
-    (used for SFX segments labeled 'none')."""
+    than one cutting off before the next begins. `tile_fn(label, sr, len,
+    segment_index)` returns the audio for a segment's label, or None to
+    contribute silence (used for SFX segments labeled 'none') -
+    `segment_index` lets a caller vary what it generates per segment
+    (see _tile_sfx_with_intensity: the same SFX type appearing in two
+    different segments of one story gets two distinct-sounding instances
+    instead of the identical loop twice)."""
     track = np.zeros(n, dtype=np.float32)
     crossfade_len = int(sr * 0.5)
     for i, (start, end, label) in enumerate(segments):
@@ -331,7 +335,7 @@ def _build_crossfaded_track(
             continue
         extend = crossfade_len if i < len(segments) - 1 else 0
         gen_end = min(n, end + extend)
-        segment_audio = tile_fn(label, sr, gen_end - start)
+        segment_audio = tile_fn(label, sr, gen_end - start, i)
         if segment_audio is None:
             continue
 
@@ -405,7 +409,7 @@ def mix_with_scene_bgm(
 
     envelope = _speech_envelope(speech, sr)
 
-    def _tile_genre_with_intensity(label, sr_, ln):
+    def _tile_genre_with_intensity(label, sr_, ln, _segment_index):
         genre, intensity = label
         return _tile_loop_to_length(genre, sr_, ln) * intensity
 
@@ -414,7 +418,7 @@ def mix_with_scene_bgm(
     bgm = bgm * bgm_duck_gain * bgm_level
 
     if sfx_segments:
-        def _tile_sfx_with_intensity(label, sr_, ln):
+        def _tile_sfx_with_intensity(label, sr_, ln, segment_index):
             # Deliberately just summed, no sqrt(N)-style loudness
             # normalization: that assumes the layered cues have
             # comparable RMS, which real SFX types don't - continuous
@@ -426,10 +430,15 @@ def mix_with_scene_bgm(
             # existing downstream peak-normalization guard (see the
             # final clip check below) already protects against any
             # resulting overload.
+            #
+            # variation_index=segment_index so a type repeating across
+            # this story's segments (e.g. rain in both segment 1 and 4)
+            # gets a distinct-sounding instance each time rather than the
+            # identical tiled loop - see sfx.py's module docstring.
             sfx_types, intensity = label
             combined = None
             for sfx_type in sfx_types:
-                audio = tile_sfx_to_length(sfx_type, sr_, ln)
+                audio = tile_sfx_to_length(sfx_type, sr_, ln, variation_index=segment_index)
                 if audio is None:
                     continue
                 combined = audio if combined is None else combined + audio

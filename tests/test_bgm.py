@@ -164,6 +164,30 @@ def test_sfx_segment_empty_list_contributes_silence():
     assert not np.isnan(mixed).any()
 
 
+def test_same_sfx_type_sounds_different_across_segments():
+    """The same SFX type appearing in two different story segments should
+    get two distinct-sounding instances (see sfx.py's per-instance
+    variation), not the identical loop tiled twice - proof the segment
+    index actually threads through mix_with_scene_bgm end to end, not
+    just at the sfx.py unit level."""
+    sr = 24000
+    seg_len = sr * 3
+    n = seg_len * 2
+    silence = np.zeros(n, dtype=np.float32)
+    segments = [(0, n, ("neutral", 0.0))]  # isolates the sfx contribution
+    sfx_segments = [(0, seg_len, (["rain"], 0.7)), (seg_len, n, (["rain"], 0.7))]
+
+    mixed = mix_with_scene_bgm(silence, sr, segments, sfx_segments=sfx_segments)
+
+    # Trim the crossfade region at the segment boundary so this compares
+    # each segment's own stable middle, not the deliberate overlap zone.
+    fade_guard = sr // 2
+    first_half = mixed[fade_guard:seg_len - fade_guard]
+    second_half = mixed[seg_len + fade_guard:n - fade_guard]
+    assert first_half.shape == second_half.shape
+    assert not np.allclose(first_half, second_half, atol=1e-5)
+
+
 def test_bgm_intensity_scales_output_level():
     """A higher bgm_intensity segment should contribute more energy than
     an identical genre at lower intensity, all else equal."""
