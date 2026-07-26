@@ -109,37 +109,53 @@ def _batch_system_prompt(known_characters: list[str]) -> str:
         "tense, or high-drama beat should be high (e.g. 0.9), independent "
         "of which genre was picked (the same genre can still swell or "
         "recede across different segments). "
-        f"SFX categories: {', '.join(SFX_TYPES)} - pick whichever fits best if "
-        "the segment's text actually describes or clearly implies that sound "
-        "happening in the scene (e.g. rain/storm -> rain, a car/vehicle -> car, "
-        "a busy street -> traffic, a market/gathering -> crowd, a door opening "
-        "-> door_creak, something shattering -> glass_break, a river/stream -> "
-        "water, an animal -> dog_bark if it fits, forest/garden -> birds); "
-        "otherwise use 'none'. Don't force a match - 'none' is correct far "
-        "more often than not. Also give \"sfx_intensity\" (0.0-1.0) for how "
-        "prominent that SOUND EFFECT should be in the scene (a light drizzle "
-        "mentioned in passing = low, e.g. 0.3; a violent storm the scene "
-        "centers on = high, e.g. 0.9) - irrelevant/ignored when sfx is "
-        f"'none'.{speaker_clause} "
+        f"SFX categories: {', '.join(SFX_TYPES)} - \"sfx\" is a JSON array of "
+        "0-2 of these that fit, since real scenes often layer more than one "
+        "sound at once (a storm is rain AND thunder together, a street "
+        "scene is traffic AND crowd together - list both when the text "
+        "actually supports it, not just the single closest match). Only "
+        "include a cue if the segment's text actually describes or clearly "
+        "implies that sound happening; use an empty array [] when nothing "
+        "fits - that's correct far more often than not, don't force matches. "
+        "Also give \"sfx_intensity\" (0.0-1.0) for how prominent the SFX "
+        "layer as a whole should be in the scene (a light drizzle mentioned "
+        "in passing = low, e.g. 0.3; a violent storm the scene centers on = "
+        f"high, e.g. 0.9) - irrelevant/ignored when sfx is [].{speaker_clause} "
         "CRITICAL: the output array must have EXACTLY the same number of "
         "elements as the input array, in the same order, one classification "
         "per input element - even if a single input element's text clearly "
-        "spans multiple scenes or sounds, pick the ONE genre and ONE sfx that "
-        "best represents that whole element rather than splitting it into "
-        "more output elements than were given as input. Never add or remove "
-        "array elements. "
+        "spans multiple scenes or sounds, pick the ONE genre that best "
+        "represents that whole element rather than splitting it into more "
+        "output elements than were given as input (the sfx array is the "
+        "one place multiple things can be listed together). Never add or "
+        "remove array elements. "
         'Respond with ONLY a JSON array of objects, same length and order as '
         'the input, no markdown fences, no other text: '
-        '[{"genre": "...", "bgm_intensity": 0.0, "sfx": "...", "sfx_intensity": 0.0, "speaker": "narrator"}]'
+        '[{"genre": "...", "bgm_intensity": 0.0, "sfx": ["..."], "sfx_intensity": 0.0, "speaker": "narrator"}]'
     )
 
 
+def _normalize_sfx_list(value) -> list[str]:
+    if not isinstance(value, list):
+        # Tolerate a bare string too (the model occasionally returns
+        # "sfx": "rain" instead of ["rain"] despite the schema) rather
+        # than discarding a real, usable classification over a shape
+        # mismatch.
+        value = [value] if isinstance(value, str) else []
+    seen = []
+    for v in value:
+        if isinstance(v, str) and v.lower() in SFX_TYPES and v.lower() != "none" and v.lower() not in seen:
+            seen.append(v.lower())
+        if len(seen) == 2:
+            break
+    return seen
+
+
 def _normalize_item(item, known_characters: list[str]) -> dict:
-    default = {"genre": "neutral", "bgm_intensity": 0.6, "sfx": "none", "sfx_intensity": 0.6, "speaker": "narrator"}
+    default = {"genre": "neutral", "bgm_intensity": 0.6, "sfx": [], "sfx_intensity": 0.6, "speaker": "narrator"}
     if not isinstance(item, dict):
         return default
     genre = item.get("genre", "").lower() if isinstance(item.get("genre"), str) else ""
-    sfx = item.get("sfx", "").lower() if isinstance(item.get("sfx"), str) else ""
 
     def _clamped_float(value, fallback):
         return min(max(float(value), 0.0), 1.0) if isinstance(value, (int, float)) else fallback
@@ -148,7 +164,7 @@ def _normalize_item(item, known_characters: list[str]) -> dict:
     return {
         "genre": genre if genre in VALID_EMOTIONS else "neutral",
         "bgm_intensity": _clamped_float(item.get("bgm_intensity"), 0.6),
-        "sfx": sfx if sfx in SFX_TYPES else "none",
+        "sfx": _normalize_sfx_list(item.get("sfx")),
         "sfx_intensity": _clamped_float(item.get("sfx_intensity"), 0.6),
         "speaker": speaker if speaker in known_characters else "narrator",
     }
@@ -160,13 +176,13 @@ def _reconcile_length(items: list, n_expected: int, known_characters: list[str])
     clearly spans multiple scenes sometimes gets split into several output
     elements anyway). Rather than discard a real, usable classification
     over a count mismatch, proportionally maps the M returned items across
-    the N expected chunks and picks the first valid genre / first non-none
-    sfx within each chunk's share - still uses real model output instead
+    the N expected chunks and picks the first valid genre / merges sfx
+    cues within each chunk's share - still uses real model output instead
     of blanket-falling-back to neutral/none."""
     normalized = [_normalize_item(item, known_characters) for item in items]
     if not normalized:
         return [
-            {"genre": "neutral", "bgm_intensity": 0.6, "sfx": "none", "sfx_intensity": 0.6, "speaker": "narrator"}
+            {"genre": "neutral", "bgm_intensity": 0.6, "sfx": [], "sfx_intensity": 0.6, "speaker": "narrator"}
             for _ in range(n_expected)
         ]
 
@@ -176,13 +192,20 @@ def _reconcile_length(items: list, n_expected: int, known_characters: list[str])
         hi = max(lo + 1, int((i + 1) * len(normalized) / n_expected))
         bucket = normalized[lo:hi]
         genre_item = next((b for b in bucket if b["genre"] != "neutral"), bucket[0])
-        sfx_item = next((b for b in bucket if b["sfx"] != "none"), bucket[0])
+        merged_sfx = []
+        for b in bucket:
+            for s in b["sfx"]:
+                if s not in merged_sfx:
+                    merged_sfx.append(s)
+            if len(merged_sfx) >= 2:
+                break
+        sfx_intensity_item = next((b for b in bucket if b["sfx"]), bucket[0])
         speaker = next((b["speaker"] for b in bucket if b["speaker"] != "narrator"), "narrator")
         results.append({
             "genre": genre_item["genre"],
             "bgm_intensity": genre_item["bgm_intensity"],
-            "sfx": sfx_item["sfx"],
-            "sfx_intensity": sfx_item["sfx_intensity"],
+            "sfx": merged_sfx[:2],
+            "sfx_intensity": sfx_intensity_item["sfx_intensity"],
             "speaker": speaker,
         })
     return results
@@ -191,19 +214,20 @@ def _reconcile_length(items: list, n_expected: int, known_characters: list[str])
 def detect_scenes_batch(texts: list[str], known_characters: list[str] | None = None) -> list[dict]:
     """Scene-aware classification: for each of `texts` (typically the same
     sentence-grouped chunks used for chunked TTS synthesis), independently
-    classifies mood/genre plus intensity (background music), an
-    environmental sound cue plus intensity (layered SFX track), and - when
-    `known_characters` is given - which of those characters (if any) is
-    speaking that segment, so their audio can get a distinguishing voice
-    treatment (see voice_profile.py). One batched API call covers every
-    chunk, not one call per chunk. Falls back to neutral/none/narrator
-    per-item only when the API call itself fails outright; a count
-    mismatch in an otherwise-valid response is reconciled (see
-    _reconcile_length) rather than discarded. Always returns a list the
-    same length as `texts`."""
+    classifies mood/genre plus intensity (background music), 0-2
+    environmental sound cues plus a shared intensity (layered SFX track -
+    real scenes often combine more than one, e.g. rain+thunder for a
+    storm), and - when `known_characters` is given - which of those
+    characters (if any) is speaking that segment, so their audio can get
+    a distinguishing voice treatment (see voice_profile.py). One batched
+    API call covers every chunk, not one call per chunk. Falls back to
+    neutral/[]/narrator per-item only when the API call itself fails
+    outright; a count mismatch in an otherwise-valid response is
+    reconciled (see _reconcile_length) rather than discarded. Always
+    returns a list the same length as `texts`."""
     known_characters = known_characters or []
     fallback = [
-        {"genre": "neutral", "bgm_intensity": 0.6, "sfx": "none", "sfx_intensity": 0.6, "speaker": "narrator"}
+        {"genre": "neutral", "bgm_intensity": 0.6, "sfx": [], "sfx_intensity": 0.6, "speaker": "narrator"}
         for _ in texts
     ]
     if not texts:

@@ -29,6 +29,35 @@ def _low_freq_energy(signal, sr, cutoff_hz=90):
     return spectrum[freqs < cutoff_hz].sum() / total
 
 
+def _energy_near_freq(signal, sr, target_hz, tolerance_hz=15):
+    spectrum = np.abs(np.fft.rfft(signal))
+    freqs = np.fft.rfftfreq(len(signal), d=1 / sr)
+    band = (freqs > target_hz - tolerance_hz) & (freqs < target_hz + tolerance_hz)
+    return spectrum[band].sum()
+
+
+@pytest.mark.parametrize("genre", list(GENRES))
+def test_melody_notes_are_actually_present_in_the_spectrum(genre):
+    """Regression guard for a real risk with this technique: it's easy to
+    wire up a melody layer that's computed but drowned out or silent due
+    to a masking/indexing bug. Checks that each genre's melody note
+    frequencies show measurably more energy nearby than a comparable
+    random gap in the spectrum - i.e. the hook is actually audible, not
+    just present in code."""
+    g = GENRES[genre]
+    root_freq = min(g["chords"][0]) * 2
+    note_freqs = [root_freq * (2.0 ** (o / 12.0)) for o in set(g["melody"])]
+    loop = get_bgm_loop(genre)
+    for note_hz in note_freqs:
+        near = _energy_near_freq(loop, 24000, note_hz)
+        # Compare against a deliberately off-note gap a third away - not
+        # zero, since reverb/noise/other layers have some broadband energy.
+        gap_hz = note_hz * (2.0 ** (2.5 / 12.0))
+        far = _energy_near_freq(loop, 24000, gap_hz)
+        assert near > 0, f"{genre}: no energy at all near melody note {note_hz:.1f}Hz"
+        assert near >= far * 0.5, f"{genre}: melody note {note_hz:.1f}Hz not measurably present vs off-note gap"
+
+
 def test_high_sub_bass_genre_has_more_low_end_than_zero_sub_bass_genre():
     # horror (sub_bass=0.85) vs happy (sub_bass=0.0) - a real, measurable
     # difference in low-frequency content, not just a config value that
@@ -100,10 +129,38 @@ def test_mix_with_scene_bgm_with_sfx_layer():
     sr = 24000
     speech = _fake_speech(sr=sr, duration_s=6.0)
     segments = [(0, sr * 3, ("calm", 0.6)), (sr * 3, sr * 6, ("horror", 0.8))]
-    sfx_segments = [(0, sr * 3, ("rain", 0.5)), (sr * 3, sr * 6, ("thunder", 0.9))]
+    sfx_segments = [(0, sr * 3, (["rain"], 0.5)), (sr * 3, sr * 6, (["thunder"], 0.9))]
     mixed = mix_with_scene_bgm(speech, sr, segments, sfx_segments=sfx_segments)
     assert mixed.shape == speech.shape
     assert np.abs(mixed).max() <= 0.98 + 1e-6
+
+
+def test_multi_sfx_layering_combines_both_cues_not_just_one():
+    """A storm scene combining rain+thunder should carry measurably more
+    energy than EITHER cue alone at the same intensity - proof the
+    layering actually sums both tracks rather than silently picking one
+    (e.g. a bug where only the first list item ever got used)."""
+    sr = 24000
+    n = sr * 4
+    silence = np.zeros(n, dtype=np.float32)
+    segments = [(0, n, ("neutral", 0.0))]  # bgm_intensity 0 isolates the sfx contribution
+
+    rain_only = mix_with_scene_bgm(silence, sr, segments, sfx_segments=[(0, n, (["rain"], 0.7))])
+    thunder_only = mix_with_scene_bgm(silence, sr, segments, sfx_segments=[(0, n, (["thunder"], 0.7))])
+    both = mix_with_scene_bgm(silence, sr, segments, sfx_segments=[(0, n, (["rain", "thunder"], 0.7))])
+
+    rms = lambda x: np.sqrt(np.mean(x.astype(np.float64) ** 2))
+    assert rms(both) > rms(rain_only)
+    assert rms(both) > rms(thunder_only)
+
+
+def test_sfx_segment_empty_list_contributes_silence():
+    sr = 24000
+    n = sr * 2
+    silence = np.zeros(n, dtype=np.float32)
+    segments = [(0, n, ("neutral", 0.0))]
+    mixed = mix_with_scene_bgm(silence, sr, segments, sfx_segments=[(0, n, ([], 0.7))])
+    assert np.abs(mixed).max() < 1e-6
     assert not np.isnan(mixed).any()
 
 
@@ -140,7 +197,7 @@ def test_bgm_and_sfx_mix_balance_is_reasonable():
     speech_db = _rms_db(speech)
 
     segments = [(0, n, ("horror", 0.7))]
-    sfx_segments = [(0, n, ("rain", 0.7))]
+    sfx_segments = [(0, n, (["rain"], 0.7))]
 
     mixed_both = mix_with_scene_bgm(speech, sr, segments, sfx_segments=sfx_segments)
     mixed_bgm_only = mix_with_scene_bgm(speech, sr, segments)

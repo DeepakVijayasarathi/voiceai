@@ -1,6 +1,15 @@
-from story_gen import LANGUAGE_CULTURAL_CONTEXT, LANGUAGE_NAMES, _cultural_clause
+from story_gen import LANGUAGE_CULTURAL_CONTEXT, LANGUAGE_NAMES, _ARC_CLAUSE, _cultural_clause
 
 REQUIRED_DIMENSIONS = {"places", "festivals", "folklore", "deities", "names"}
+
+
+def test_arc_clause_asks_for_a_real_turn_and_resolution():
+    assert "turn" in _ARC_CLAUSE.lower()
+    assert "resolution" in _ARC_CLAUSE.lower()
+
+
+def test_arc_clause_rejects_flat_sequencing():
+    assert "flat" in _ARC_CLAUSE.lower() or "sequence" in _ARC_CLAUSE.lower()
 
 
 def test_every_language_has_cultural_context():

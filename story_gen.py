@@ -201,6 +201,26 @@ def _chat_completion(system_prompt: str, user_content: str, max_tokens: int = 50
     return content
 
 
+# A scaled-down three-act shape for short-form narration: establish
+# scene/stakes fast, build to a real turn (the emotional/narrative peak,
+# not just the next event in sequence), land on a resolution or a
+# resonant final image. This isn't just prose quality for its own sake -
+# it has a direct downstream effect: app.py's scene classification
+# (emotion.py's detect_scenes_batch) tags each chunk's genre/bgm_intensity
+# independently, so a story that actually HAS a dramatic arc gives that
+# classifier real shifts to detect (calm setup -> rising tension ->
+# climax -> resolution), which is what makes the scene-aware music/SFX
+# meaningfully dynamic instead of one flat mood for a flatly-recounted
+# sequence of events.
+_ARC_CLAUSE = (
+    " Shape it with a real dramatic arc even at this short length: "
+    "establish the scene and stakes quickly, build toward a genuine turn "
+    "or complication - the emotional peak, not just the next thing that "
+    "happens - and land on a resolution or a resonant final image. Don't "
+    "flatly recount a sequence of events with no rising tension."
+)
+
+
 def generate_story(description: str, language: str) -> str:
     """Returns a short narrative in `language`'s native script, generated
     from the user's dream/memory description. Raises StoryGenError on
@@ -213,7 +233,7 @@ def generate_story(description: str, language: str) -> str:
         f"suitable for spoken audio narration, written entirely in {lang_name} "
         f"(native script, not transliterated). Keep it under {TARGET_CHAR_BUDGET} "
         f"characters. Write only the narrative itself - no title, no notes, "
-        f"no markdown, no quotation marks around it.{_cultural_clause(language)}"
+        f"no markdown, no quotation marks around it.{_ARC_CLAUSE}{_cultural_clause(language)}"
     )
     story = _chat_completion(system_prompt, description, max_tokens=500, temperature=0.9)
     return story[:950]  # hard safety margin under MAX_TEXT_LEN
@@ -280,7 +300,9 @@ def generate_continuation(prior_text: str, changed_decision: str, language: str)
         f"some point in it. Write ONLY the new continuation from that changed "
         f"decision onward - do not repeat the original text, do not include "
         f"the parts before the change. Keep it under {TARGET_CHAR_BUDGET} "
-        f"characters. No title, no markdown, no notes.{_cultural_clause(language)}"
+        f"characters. No title, no markdown, no notes. Build this continuation "
+        f"toward its own real turn and resolution rather than just narrating "
+        f"what happens next in flat sequence.{_cultural_clause(language)}"
     )
     user_content = f"STORY SO FAR:\n{prior_text}\n\nCHANGED DECISION:\n{changed_decision}"
     continuation = _chat_completion(system_prompt, user_content, max_tokens=500, temperature=0.9)
