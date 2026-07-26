@@ -48,11 +48,33 @@ def normalize_numbers(text: str, lang: str) -> str:
 # Symbols with no native pronunciation in the tiny grapheme vocab -- either
 # drop them or replace with a native-script equivalent that IS in vocab.
 _SYMBOL_STRIP = re.compile(r"[#*_~`^\[\]{}<>|\\@]")
+# Emoji: verified end-to-end that the tokenizer already silently drops
+# these (out-of-vocab characters) without corrupting surrounding text, so
+# this isn't fixing an observed bug - it's hardening against untested
+# edge cases the same implicit behavior might not cover as cleanly
+# (multi-codepoint emoji built from a base character + skin-tone modifier
+# + zero-width joiners, which the tokenizer's grapheme splitting has
+# never been verified against). Explicit and defensive costs nothing.
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"  # misc symbols/pictographs through extended-A
+    "\U00002600-\U000027BF"  # misc symbols + dingbats
+    "\U0001F1E6-\U0001F1FF"  # regional indicators (flag emoji)
+    "\U0001F900-\U0001F9FF"  # supplemental symbols and pictographs
+    "\U0000FE00-\U0000FE0F"  # variation selectors
+    "\U0001F000-\U0001F0FF"  # mahjong/domino/playing cards (rare, but out-of-vocab all the same)
+    "\U00002190-\U000021FF"  # arrows
+    "\U00002B00-\U00002BFF"  # misc symbols and arrows
+    "\U0000200D"             # zero-width joiner (glues compound emoji together)
+    "]+",
+    flags=re.UNICODE,
+)
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
 def normalize_text(text: str, lang: str) -> str:
     text = normalize_numbers(text, lang)
     text = _SYMBOL_STRIP.sub("", text)
+    text = _EMOJI_RE.sub("", text)
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text

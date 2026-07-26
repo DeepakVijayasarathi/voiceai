@@ -33,12 +33,17 @@ server {
 
         proxy_pass http://127.0.0.1:8503;
         proxy_set_header Host $host;
-        # 30s was too short once /clone (30-70s+) and /dream-to-story
-        # with visual/video=true (image generation + audio synthesis,
-        # 60-90s+ combined) existed - both were hitting a 504 here even
-        # though the backend eventually completed successfully.
-        proxy_read_timeout 180s;
-        proxy_send_timeout 180s;
+        # 30s was too short once /clone (30-70s+) existed; 180s then
+        # proved too short once /dream-to-story's optional image features
+        # (images=storyboard, visual=cover, video, avatars=per-character)
+        # could all be requested together - measured directly against the
+        # backend (bypassing this proxy) at 4m34s for the maximal
+        # combination (storyboard of 4 + cover + video + 2 character
+        # avatars = 7+ sequential OpenAI image calls on top of story
+        # generation, quality scoring, and synthesis). Set well above that
+        # measured worst case, not just nudged past the last failure.
+        proxy_read_timeout 420s;
+        proxy_send_timeout 420s;
         proxy_connect_timeout 10s;
     }
 }
