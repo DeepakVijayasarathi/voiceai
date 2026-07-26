@@ -38,39 +38,134 @@ LANGUAGE_NAMES = {
     "pan": "Punjabi", "ory": "Odia", "asm": "Assamese",
 }
 
-# Real, specific regional landmarks/cultural touchstones per language -
-# not mandatory set-dressing for every story, but something authentic for
-# the model to reach for instead of a generic, placeless "a village" or
-# "a city" when the story calls for a setting. A Tamil story set in a
-# temple town should be able to land on Madurai's Meenakshi Amman Temple
-# rather than an invented one; a Hindi story near a sacred river should
-# be able to land on Varanasi's ghats, and so on.
+# Real, specific regional cultural touchstones per language, across five
+# dimensions - not mandatory set-dressing for every story, but something
+# authentic for the model to reach for instead of generic invented
+# stand-ins. A Tamil story set in a temple town should land on Madurai's
+# Meenakshi Amman Temple, not an invented one; a Tamil horror story
+# should be able to reach for actual Yakshi/Muni folklore rather than a
+# generic "demon"; a new character introduced in a Bengali story should
+# plausibly be named "Ananya", not "Anna". Religious content (devotional
+# deities, Sikh Golden Temple reverence) is listed factually, for a
+# writer to reference respectfully in context - not for parody or
+# irreverent treatment.
+#
+#   places      - real landmarks, for scenes that need a setting
+#   festivals   - real festivals, for scenes that need a time/occasion
+#   folklore    - real regional folk-spirit/legend motifs, for
+#                 horror/mystery genres specifically (see emotion.py's
+#                 genre classification) instead of generic invented ones
+#   deities     - real devotional figures/sites, for devotional-genre
+#                 stories specifically
+#   names       - common authentic first names, for new characters a
+#                 story introduces
 LANGUAGE_CULTURAL_CONTEXT = {
-    "tam": "Tamil Nadu - e.g. Madurai and the Meenakshi Amman Temple, Rameswaram, Thanjavur's Brihadeeswarar Temple, Chennai, the hills of Ooty",
-    "hin": "the Hindi-speaking heartland - e.g. Varanasi's ghats on the Ganga, Delhi's Red Fort, Agra's Taj Mahal, Mathura-Vrindavan, Rishikesh",
-    "tel": "Andhra Pradesh/Telangana - e.g. Tirupati's Venkateswara Temple, Hyderabad's Charminar, Vijayawada, Amaravati",
-    "mal": "Kerala - e.g. the Kerala backwaters near Alleppey, Kochi, Guruvayur Temple, the hills of Munnar, Sabarimala",
-    "kan": "Karnataka - e.g. Mysore Palace, the ruins of Hampi, Bengaluru, Udupi's Krishna Temple, Coorg's hills",
-    "mar": "Maharashtra - e.g. Shirdi, the Ajanta-Ellora cave temples, Pune, Mumbai, the Konkan coast",
-    "guj": "Gujarat - e.g. Dwarka's Dwarkadhish Temple, the Somnath Temple, the Rann of Kutch, Ahmedabad",
-    "ben": "West Bengal - e.g. Kolkata's Howrah Bridge and Durga Puja season, the Sundarbans, Dakshineswar Kali Temple, Shantiniketan",
-    "pan": "Punjab - e.g. Amritsar's Golden Temple, Punjab's wheat fields, Anandpur Sahib",
-    "ory": "Odisha - e.g. Puri's Jagannath Temple, the Konark Sun Temple, Chilika Lake, Bhubaneswar",
-    "asm": "Assam - e.g. Guwahati's Kamakhya Temple, the Brahmaputra river, Kaziranga, Assam's tea gardens",
+    "tam": {
+        "places": "Madurai and the Meenakshi Amman Temple, Rameswaram, Thanjavur's Brihadeeswarar Temple, Chennai, the hills of Ooty",
+        "festivals": "Pongal, Puthandu (Tamil New Year), Karthigai Deepam",
+        "folklore": "Yakshi/spirit lore, guardian-spirit (Muni) shrines, the Madurai Veeran legend",
+        "deities": "Murugan (Palani, Tiruchendur), Meenakshi Amman, Mariamman",
+        "names": "Karthik, Arun, Vikram, Kannan, Meena, Priya, Lakshmi",
+    },
+    "hin": {
+        "places": "Varanasi's ghats on the Ganga, Delhi's Red Fort, Agra's Taj Mahal, Mathura-Vrindavan, Rishikesh",
+        "festivals": "Diwali, Holi, Navratri, Chhath Puja",
+        "folklore": "Vikram-Betaal tales, Chudail/Bhoot ghost lore",
+        "deities": "Krishna (Mathura-Vrindavan), Shiva (Varanasi), Rama (Ayodhya)",
+        "names": "Rahul, Arjun, Rohan, Priya, Meera, Anjali",
+    },
+    "tel": {
+        "places": "Tirupati's Venkateswara Temple, Hyderabad's Charminar, Vijayawada, Amaravati",
+        "festivals": "Ugadi, Sankranti, Bathukamma",
+        "folklore": "Katamaraju Kathalu legends, local Bhoothu ghost lore",
+        "deities": "Venkateswara (Tirupati), Kanaka Durga (Vijayawada)",
+        "names": "Ravi, Krishna, Venkat, Lakshmi, Padma",
+    },
+    "mal": {
+        "places": "the Kerala backwaters near Alleppey, Kochi, Guruvayur Temple, the hills of Munnar, Sabarimala",
+        "festivals": "Onam, Vishu, Thrissur Pooram",
+        "folklore": "Yakshi legends, Theyyam ritual-spirit performances, Kadamattathu Kathanar tales",
+        "deities": "Ayyappan (Sabarimala), Guruvayurappan",
+        "names": "Arjun, Krishnan, Nandu, Anjali, Devika",
+    },
+    "kan": {
+        "places": "Mysore Palace, the ruins of Hampi, Bengaluru, Udupi's Krishna Temple, Coorg's hills",
+        "festivals": "Ugadi, Mysuru Dasara",
+        "folklore": "Hampi ruin legends, local spirit lore",
+        "deities": "Krishna (Udupi), Chamundeshwari (Mysore)",
+        "names": "Vikram, Raju, Lakshmi, Radha",
+    },
+    "mar": {
+        "places": "Shirdi, the Ajanta-Ellora cave temples, Pune, Mumbai, the Konkan coast",
+        "festivals": "Ganesh Chaturthi, Gudi Padwa",
+        "folklore": "Vetal tales, Konkan coast Zoting/Munjya ghost lore",
+        "deities": "Vitthal (Pandharpur), Sai Baba (Shirdi)",
+        "names": "Sai, Aditya, Priya, Sneha",
+    },
+    "guj": {
+        "places": "Dwarka's Dwarkadhish Temple, the Somnath Temple, the Rann of Kutch, Ahmedabad",
+        "festivals": "Navratri (Garba), Uttarayan (kite festival)",
+        "folklore": "Rann of Kutch desert legends",
+        "deities": "Krishna (Dwarka), Shiva (Somnath)",
+        "names": "Krishna, Jay, Meera, Kavya",
+    },
+    "ben": {
+        "places": "Kolkata's Howrah Bridge, the Sundarbans, Dakshineswar Kali Temple, Shantiniketan",
+        "festivals": "Durga Puja, Poila Boishakh (Bengali New Year), Kali Puja",
+        "folklore": "Petni/Shakchunni ghost lore, Thakurmar Jhuli folk tales",
+        "deities": "Kali (Dakshineswar), Durga",
+        "names": "Arjun, Rohan, Priya, Ananya",
+    },
+    "pan": {
+        "places": "Amritsar's Golden Temple, Punjab's wheat fields, Anandpur Sahib",
+        "festivals": "Baisakhi, Lohri",
+        "folklore": "the Heer-Ranjha legend",
+        "deities": "",  # Sikh tradition centers on the Guru Granth Sahib/gurdwara reverence, not a devotional-deity-genre framing - left out rather than forced.
+        "names": "Simran, Gurpreet, Harpreet, Arjun",
+    },
+    "ory": {
+        "places": "Puri's Jagannath Temple, the Konark Sun Temple, Chilika Lake, Bhubaneswar",
+        "festivals": "Rath Yatra, Nuakhai",
+        "folklore": "local coastal/river spirit lore",
+        "deities": "Jagannath (Puri)",
+        "names": "Subhash, Debasish, Priya",
+    },
+    "asm": {
+        "places": "Guwahati's Kamakhya Temple, the Brahmaputra river, Kaziranga, Assam's tea gardens",
+        "festivals": "Bihu",
+        "folklore": "Brahmaputra river legends",
+        "deities": "Kamakhya (Guwahati)",
+        "names": "Bikram, Dipankar, Priya",
+    },
 }
 
 
-def _setting_clause(language: str) -> str:
-    context = LANGUAGE_CULTURAL_CONTEXT.get(language)
-    if not context:
+def _cultural_clause(language: str, *, include_names: bool = True) -> str:
+    """Builds a soft, contextual cultural-grounding instruction from
+    LANGUAGE_CULTURAL_CONTEXT - places for any story that needs a
+    setting, folklore for horror/mystery, deities for devotional, plus
+    (optionally) authentic names for new characters. Genre isn't known
+    in advance here (classification happens after generation - see
+    emotion.py), so all dimensions are offered together and the model is
+    told explicitly to only use what fits, not force every category in."""
+    ctx = LANGUAGE_CULTURAL_CONTEXT.get(language)
+    if not ctx:
         return ""
+    parts = [
+        f"places ({ctx['places']})",
+        f"festivals, if the scene calls for one ({ctx['festivals']})",
+        f"regional folklore/spirit motifs, specifically for horror or mystery content, instead of a generic invented spirit ({ctx['folklore']})",
+    ]
+    if ctx["deities"]:
+        parts.append(f"devotional figures/sites, specifically for devotional content, referenced respectfully ({ctx['deities']})")
+    if include_names:
+        parts.append(f"common authentic first names for any NEW character the story introduces, instead of a generic or foreign-sounding invented one ({ctx['names']})")
+    options = "; ".join(parts)
     return (
-        f" If the story calls for a real-world setting, name a specific, "
-        f"real one from {context} explicitly (by name, e.g. 'Madurai' or "
-        f"'the Meenakshi Amman Temple', not just 'a temple town') rather "
-        f"than describing an invented or unnamed generic place. Don't "
-        f"force this: an abstract, fantastical, or otherwise-located story "
-        f"shouldn't be awkwardly relocated just to name-drop one."
+        f" Where it genuinely fits, prefer real, specific regional touchstones over invented or generic "
+        f"ones - {options}. Use only what fits the story's actual content and genre; "
+        f"don't force any category in, and don't relocate or reshape an abstract, fantastical, "
+        f"or otherwise-located story just to include one."
     )
 
 
@@ -118,7 +213,7 @@ def generate_story(description: str, language: str) -> str:
         f"suitable for spoken audio narration, written entirely in {lang_name} "
         f"(native script, not transliterated). Keep it under {TARGET_CHAR_BUDGET} "
         f"characters. Write only the narrative itself - no title, no notes, "
-        f"no markdown, no quotation marks around it.{_setting_clause(language)}"
+        f"no markdown, no quotation marks around it.{_cultural_clause(language)}"
     )
     story = _chat_completion(system_prompt, description, max_tokens=500, temperature=0.9)
     return story[:950]  # hard safety margin under MAX_TEXT_LEN
@@ -185,7 +280,7 @@ def generate_continuation(prior_text: str, changed_decision: str, language: str)
         f"some point in it. Write ONLY the new continuation from that changed "
         f"decision onward - do not repeat the original text, do not include "
         f"the parts before the change. Keep it under {TARGET_CHAR_BUDGET} "
-        f"characters. No title, no markdown, no notes.{_setting_clause(language)}"
+        f"characters. No title, no markdown, no notes.{_cultural_clause(language)}"
     )
     user_content = f"STORY SO FAR:\n{prior_text}\n\nCHANGED DECISION:\n{changed_decision}"
     continuation = _chat_completion(system_prompt, user_content, max_tokens=500, temperature=0.9)
@@ -207,7 +302,7 @@ def revive_character(name: str, personality: str, backstory: str, new_setting: s
         f"characters. No title, no markdown, no notes. The user's NEW SETTING "
         f"below is the actual setting to use - only reach for a regional "
         f"landmark instead if NEW SETTING is vague/unspecified about "
-        f"place.{_setting_clause(language)}"
+        f"place.{_cultural_clause(language)}"
     )
     user_content = (
         f"CHARACTER: {name}\nPERSONALITY: {personality}\nBACKSTORY: {backstory}\n\n"
@@ -227,7 +322,7 @@ def generate_villain(fears: str, language: str) -> tuple[str, str]:
         f"Design a villain character whose menace specifically targets the "
         f"fears/anxieties described by the user, then write a short, vivid "
         f"scene in {lang_name} (native script) introducing this villain to a "
-        f"protagonist.{_setting_clause(language)} Respond as JSON only, no "
+        f"protagonist.{_cultural_clause(language)} Respond as JSON only, no "
         f"markdown fences: "
         f'{{"name": "villain name", "scene": "the scene text, under '
         f"{TARGET_CHAR_BUDGET} characters, no title, no notes\"}}."
