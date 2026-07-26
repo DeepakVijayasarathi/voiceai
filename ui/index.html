@@ -88,6 +88,11 @@
   .navitem.active .dot { opacity: 1; }
   .navicon { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .navicon svg { width: 17px; height: 17px; }
+  .nav-section-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--muted); padding: 14px 12px 4px;
+  }
+  .navlist > .nav-section-label:first-child { padding-top: 2px; }
 
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 4px; }
   .stat-card {
@@ -367,8 +372,6 @@
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .comic-panel { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--panel); }
-  .comic-panel img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; }
-  .comic-panel .cap { font-size: 11px; padding: 8px 10px; color: var(--muted); line-height: 1.4; }
 
   .dub-source-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 4px; }
   .dub-source-card {
@@ -387,11 +390,25 @@
   }
   .dub-source-lang { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-  .tree-node { margin-left: 16px; border-left: 2px solid var(--border); padding-left: 14px; margin-top: 8px; }
-  .tree-node.root { margin-left: 0; border-left: none; padding-left: 0; }
-  .tree-card { padding: 10px 12px; background: var(--bg-soft); border-radius: 10px; font-size: 12.5px; }
-  .tree-card .tt { font-weight: 700; margin-bottom: 2px; }
-  .tree-card .tn { color: var(--muted); font-size: 11px; }
+  .story-card {
+    display: flex; gap: 14px; align-items: flex-start; padding: 14px; margin-bottom: 10px;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--panel); box-shadow: var(--shadow);
+  }
+  .story-card-thumb {
+    width: 76px; height: 76px; flex-shrink: 0; border-radius: 12px; overflow: hidden; background: var(--gradient);
+  }
+  .story-card-thumb.clickable { cursor: pointer; }
+  .story-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .story-card-thumb-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #fff; }
+  .story-card-thumb-fallback svg { width: 26px; height: 26px; }
+  .story-card-body { flex: 1; min-width: 0; }
+  .story-card-title { font-weight: 700; font-size: 13.5px; margin-bottom: 3px; line-height: 1.4; }
+  .story-card-sub { color: var(--muted); font-size: 11.5px; margin-bottom: 10px; }
+  .story-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  @media (max-width: 520px) {
+    .story-card { flex-direction: column; }
+    .story-card-thumb { width: 100%; height: 150px; }
+  }
 
   .svc-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
     border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; margin-bottom: 8px; }
@@ -1050,48 +1067,6 @@ function VillainPanel({ apiKey, onStorySaved }) {
 }
 
 /* ---------------- Stories & Branches ---------------- */
-function ComicView({ apiKey, storyId }) {
-  const [panels, setPanels] = useState(null);
-  useEffect(() => {
-    fetch(`${API_BASE}/stories/${storyId}/comic`, { headers: authHeaders(apiKey) })
-      .then((r) => r.json()).then((d) => setPanels(d.panels || []));
-  }, [storyId]);
-  if (panels === null) return <div className="hint">Loading comic…</div>;
-  if (!panels.length) return <div className="hint">No scene images for this story yet - generate it with illustrations on.</div>;
-  return (
-    <div className="grid">
-      {panels.map((p, i) => (
-        <div className="comic-panel" key={i}>
-          <img src={API_BASE + p.image_url} alt={`Panel ${i + 1}`} />
-          <div className="cap">{p.caption}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function GameTreeNode({ node, isRoot }) {
-  return (
-    <div className={`tree-node ${isRoot ? "root" : ""}`}>
-      <div className="tree-card">
-        <div className="tt">#{node.id} {node.title || ""}</div>
-        {node.branch_note && <div className="tn">↳ {node.branch_note}</div>}
-      </div>
-      {(node.children || []).map((c) => <GameTreeNode key={c.id} node={c} isRoot={false} />)}
-    </div>
-  );
-}
-
-function GameTreeView({ apiKey, storyId }) {
-  const [tree, setTree] = useState(null);
-  useEffect(() => {
-    fetch(`${API_BASE}/stories/${storyId}/game-tree`, { headers: authHeaders(apiKey) })
-      .then((r) => r.json()).then(setTree);
-  }, [storyId]);
-  if (!tree) return <div className="hint">Loading choice-tree…</div>;
-  return <GameTreeNode node={tree} isRoot={true} />;
-}
-
 /* Batch language-switching: dub one story into several languages at once
    (POST /stories/{id}/dub), each retold through that language's culture
    pack rather than translated literally. The endpoint returns a JSON
@@ -1185,7 +1160,7 @@ function DubPanel({ apiKey, story }) {
 }
 
 function StoryRow({ apiKey, story, onChanged }) {
-  const [openPanel, setOpenPanel] = useState(null); // 'branch' | 'lang' | 'dub' | 'comic' | 'game' | 'cover' | null
+  const [openPanel, setOpenPanel] = useState(null); // 'branch' | 'lang' | 'dub' | 'cover' | null
   const [changedDecision, setChangedDecision] = useState("");
   const [targetLang, setTargetLang] = useState("tam");
   const [status, setStatus] = useState({ text: "", cls: "" });
@@ -1237,23 +1212,6 @@ function StoryRow({ apiKey, story, onChanged }) {
     } finally { setBusy(false); }
   };
 
-  const doRenderVideo = async () => {
-    setVideoStatus("Rendering (ffmpeg)...");
-    try {
-      const resp = await fetch(`${API_BASE}/stories/${story.id}/render/video`, {
-        method: "POST", headers: authHeaders(apiKey),
-      });
-      if (!resp.ok) throw new Error(await readError(resp));
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `story-${story.id}.mp4`; a.click();
-      setVideoStatus("Downloaded.");
-    } catch (err) {
-      setVideoStatus(err.message || String(err));
-    }
-  };
-
   const doDownloadCoverVideo = async () => {
     setVideoStatus("Composing cover video (ffmpeg)...");
     try {
@@ -1285,30 +1243,29 @@ function StoryRow({ apiKey, story, onChanged }) {
 
   return (
     <div>
-      <div className="list-row">
-        {story.has_image ? (
-          <img className="thumb" src={`${API_BASE}/stories/${story.id}/image`} alt="" onClick={() => toggle("cover")} />
-        ) : null}
-        <div className="list-main">
-          <div className="list-title">#{story.id}: {story.title || "(untitled)"}</div>
-          <div className="list-sub">
-            {story.language}
+      <div className="story-card">
+        <div className={`story-card-thumb ${story.has_image ? "clickable" : ""}`} onClick={() => story.has_image && toggle("cover")}>
+          {story.has_image
+            ? <img src={`${API_BASE}/stories/${story.id}/image`} alt="" />
+            : <div className="story-card-thumb-fallback"><Icon name="book" /></div>}
+        </div>
+        <div className="story-card-body">
+          <div className="story-card-title">#{story.id}: {story.title || "(untitled)"}</div>
+          <div className="story-card-sub">
+            {LANGUAGES.find(([c]) => c === story.language)?.[1] || story.language}
             {story.parent_story_id ? ` · branched from #${story.parent_story_id}` : ""}
             {story.variant_of_story_id ? ` · language variant of #${story.variant_of_story_id}` : ""}
           </div>
-        </div>
-        <div className="list-actions">
-          <button className="btn ghost small" onClick={() => toggle("branch")}>Branch</button>
-          <button className="btn ghost small" onClick={() => toggle("lang")}>Switch language</button>
-          <button className="btn ghost small" onClick={() => toggle("dub")}>Dub</button>
-          <button className="btn ghost small" onClick={() => toggle("comic")}>Comic</button>
-          <button className="btn ghost small" onClick={() => toggle("game")}>Game tree</button>
-          <button className="btn ghost small" onClick={doRenderVideo}>Video</button>
-          {!!story.has_image && <button className="btn ghost small" onClick={() => toggle("cover")}>Cover</button>}
-          {!!(story.has_image && story.has_audio) && <button className="btn ghost small" onClick={doDownloadCoverVideo}>Cover video</button>}
-          <button className="btn ghost small danger" onClick={doDelete} disabled={busy} title="Delete this story">
-            <Icon name="trash" /> Delete
-          </button>
+          <div className="story-card-actions">
+            <button className="btn ghost small" onClick={() => toggle("branch")}>Branch</button>
+            <button className="btn ghost small" onClick={() => toggle("lang")}>Switch language</button>
+            <button className="btn ghost small" onClick={() => toggle("dub")}>Dub</button>
+            {!!story.has_image && <button className="btn ghost small" onClick={() => toggle("cover")}>Cover</button>}
+            {!!(story.has_image && story.has_audio) && <button className="btn ghost small" onClick={doDownloadCoverVideo}>Cover video</button>}
+            <button className="btn ghost small danger" onClick={doDelete} disabled={busy} title="Delete this story">
+              <Icon name="trash" /> Delete
+            </button>
+          </div>
         </div>
       </div>
       {videoStatus && <div className="hint" style={{ marginLeft: 14 }}>{videoStatus}</div>}
@@ -1349,12 +1306,6 @@ function StoryRow({ apiKey, story, onChanged }) {
       )}
       {openPanel === "dub" && (
         <div className="inline-form"><DubPanel apiKey={apiKey} story={story} /></div>
-      )}
-      {openPanel === "comic" && (
-        <div className="inline-form"><ComicView apiKey={apiKey} storyId={story.id} /></div>
-      )}
-      {openPanel === "game" && (
-        <div className="inline-form"><GameTreeView apiKey={apiKey} storyId={story.id} /></div>
       )}
     </div>
   );
@@ -1817,16 +1768,22 @@ function Icon({ name }) {
 /* ---------------- App shell ---------------- */
 const TABS = [
   { id: "overview", label: "Overview", icon: "dashboard" },
-  { id: "narrate", label: "Audio Studio", icon: "narrate" },
-  { id: "clone", label: "Clone voice", icon: "mic" },
-  { id: "dream", label: "Dream to Story", icon: "sparkle" },
-  { id: "villain", label: "Villain", icon: "villain" },
-  { id: "dub", label: "Dub Studio", icon: "globe" },
-  { id: "stories", label: "Stories & Branches", icon: "branch" },
-  { id: "characters", label: "Characters", icon: "users" },
-  { id: "quality", label: "Quality backlog", icon: "check" },
-  { id: "services", label: "Services", icon: "settings" },
-  { id: "config", label: "Config", icon: "config" },
+  { id: "narrate", label: "Audio Studio", icon: "narrate", section: "create" },
+  { id: "clone", label: "Clone voice", icon: "mic", section: "create" },
+  { id: "dream", label: "Dream to Story", icon: "sparkle", section: "create" },
+  { id: "villain", label: "Villain", icon: "villain", section: "create" },
+  { id: "dub", label: "Dub Studio", icon: "globe", section: "create" },
+  { id: "stories", label: "Stories & Branches", icon: "branch", section: "library" },
+  { id: "characters", label: "Characters", icon: "users", section: "library" },
+  { id: "quality", label: "Quality backlog", icon: "check", section: "library" },
+  { id: "services", label: "Services", icon: "settings", section: "system" },
+  { id: "config", label: "Config", icon: "config", section: "system" },
+];
+
+const NAV_SECTIONS = [
+  { id: "create", label: "Create" },
+  { id: "library", label: "Library" },
+  { id: "system", label: "System" },
 ];
 
 const TAB_META = {
@@ -1836,20 +1793,46 @@ const TAB_META = {
   dream: { title: "Dream to Story", sub: "Turn a description into a narrated scene - characters persist, quality is scored, illustrations are optional." },
   villain: { title: "Personalized villain", sub: "A villain built around fears you actually describe, not a generic antagonist." },
   dub: { title: "Dub Studio", sub: "One script, every language - retold (not translated) through each language's own culture pack, narrated in one batch." },
-  stories: { title: "Stories & Branches", sub: "Branch from a changed decision, switch language, view as comic panels, export video, or walk the choice-tree." },
+  stories: { title: "Stories & Branches", sub: "Branch from a changed decision, switch language, dub into several at once, or revisit any story's cover." },
   characters: { title: "Characters", sub: "Named characters persist across stories - revive them into any new setting." },
   quality: { title: "Quality backlog", sub: "Cultural authenticity, measured. See what's still weak after an automatic rewrite." },
   services: { title: "Services", sub: "Live status of every backing service this UI talks to." },
   config: { title: "Config", sub: "Live runtime configuration, read directly from the running process - can't go stale like a static doc." },
 };
 
-function NavItems({ activeTab, setActiveTab }) {
-  return TABS.map((t) => (
-    <div key={t.id} className={`navitem ${activeTab === t.id ? "active" : ""}`} onClick={() => setActiveTab(t.id)}>
+function NavItem({ t, activeTab, setActiveTab }) {
+  return (
+    <div className={`navitem ${activeTab === t.id ? "active" : ""}`} onClick={() => setActiveTab(t.id)}>
       <Icon name={t.icon} />
       <span>{t.label}</span>
     </div>
-  ));
+  );
+}
+
+/* variant="sidebar" groups items under labeled sections (Create / Library
+   / System) so the menu reads as an organized product, not a flat list of
+   ten equally-weighted items. variant="mobile" (the default) keeps the
+   flat list, since section labels don't make sense in a horizontally
+   scrolling strip - the grouped order alone still keeps related tabs
+   next to each other there. */
+function NavItems({ activeTab, setActiveTab, variant }) {
+  if (variant !== "sidebar") {
+    return TABS.map((t) => <NavItem key={t.id} t={t} activeTab={activeTab} setActiveTab={setActiveTab} />);
+  }
+  const overview = TABS.find((t) => !t.section);
+  return (
+    <React.Fragment>
+      {overview && <NavItem t={overview} activeTab={activeTab} setActiveTab={setActiveTab} />}
+      {NAV_SECTIONS.map((section) => (
+        <React.Fragment key={section.id}>
+          <div className="nav-section-label">{section.label}</div>
+          {TABS.filter((t) => t.section === section.id).map((t) => (
+            <NavItem key={t.id} t={t} activeTab={activeTab} setActiveTab={setActiveTab} />
+          ))}
+        </React.Fragment>
+      ))}
+    </React.Fragment>
+  );
 }
 
 /* ---------------- Overview / Dashboard ---------------- */
@@ -2104,7 +2087,7 @@ function App() {
             <div className="brand-sub">Cultural Story OS</div>
           </div>
         </div>
-        <div className="navlist"><NavItems activeTab={activeTab} setActiveTab={setActiveTab} /></div>
+        <div className="navlist"><NavItems variant="sidebar" activeTab={activeTab} setActiveTab={setActiveTab} /></div>
         <div className="apikey-box">
           <label>API key</label>
           <input type="password" placeholder="x-api-key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />

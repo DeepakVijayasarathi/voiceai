@@ -397,6 +397,18 @@ def _quality_headers(quality_scores: dict) -> dict:
     }
 
 
+def _carry_over_cover_image(source_story_id: int, new_story_id: int) -> None:
+    """Copies a story's cover image (if it has one) onto a freshly created
+    branch/language-variant/dub of it, rather than leaving the derivative
+    with no thumbnail at all. It's still the same underlying scene, just a
+    different branch point or language, so reusing the existing image is
+    both more consistent-looking and free - no extra OpenAI image call for
+    something that would come out looking the same anyway."""
+    image_bytes = db.get_story_image(source_story_id)
+    if image_bytes is not None:
+        db.save_story_image(new_story_id, image_bytes)
+
+
 def _maybe_generate_avatar(character_id: int, name: str, personality: str, backstory: str) -> None:
     """Best-effort character portrait generation (see app.py's `avatars`
     request field, image_gen.generate_character_avatar) - a failure here
@@ -741,7 +753,7 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
     image_error = None
     if req.visual or req.video:
         try:
-            image_bytes = generate_story_image(story_text, title=req.description[:80])
+            image_bytes = generate_story_image(story_text)
             db.save_story_image(story_id, image_bytes)
         except CoverImageGenError as e:
             logger.warning("visual generation failed for story_id=%s (non-fatal): %s", story_id, e)
@@ -1003,6 +1015,7 @@ def branch_story(story_id: int, req: BranchRequest, x_api_key: str | None = Head
         title=f"Branch of #{story_id}", language=parent["language"], text=continuation,
         parent_story_id=story_id, branch_note=req.changed_decision,
     )
+    _carry_over_cover_image(story_id, new_story_id)
     if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
         db.save_quality_entry(new_story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
     story_characters = db.get_characters_for_story(story_id)
@@ -1076,6 +1089,7 @@ def _generate_language_variant(
         title=f"{original['title'] or 'Story #' + str(story_id)} ({target_language})",
         language=target_language, text=adapted_text, variant_of_story_id=story_id,
     )
+    _carry_over_cover_image(story_id, new_story_id)
     if quality_scores.get("scored") and quality_scores["overall"] < QUALITY_THRESHOLD:
         db.save_quality_entry(new_story_id, quality_scores, rewritten=quality_scores.get("rewrite_attempted", False))
     story_characters = db.get_characters_for_story(story_id)
