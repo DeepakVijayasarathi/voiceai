@@ -41,6 +41,7 @@ from mixed_lang import resolve_mixed_language
 from normalize import normalize_text
 from ratelimit import RateLimitMiddleware
 from image_gen import ImageGenError, generate_story_image
+from video_gen import VideoGenError, compose_video
 from sfx import SFX_TYPES, get_sfx_loop
 from voice_profile import PROFILE_NAMES, _PROFILES, assign_profiles, apply_voice_profile, get_speed_multiplier
 from story_gen import (
@@ -157,6 +158,7 @@ class DreamToStoryRequest(BaseModel):
     emotion: str | None = Field(default="auto", description="One of: " + ", ".join(EMOTION_PRESETS) + ", or 'auto' to classify from the generated story via OpenAI (default).")
     bgm: bool = Field(default=True, description="Mix in genre-matched background ambience (on by default for this endpoint - it's built for dramatic narration).")
     visual: bool = Field(default=False, description="Also generate a cover/scene image via OpenAI's image API depicting the story's strongest visual moment. Off by default - a real cost/latency commitment per image, unlike the cheap text calls elsewhere. Retrieve via GET /stories/{id}/image.")
+    video: bool = Field(default=False, description="Also compose a downloadable/shareable MP4 (the cover image held for the full narration) via ffmpeg. Implies visual=true (video needs a cover image) even if visual wasn't separately set. Off by default. Retrieve via GET /stories/{id}/video.")
 
 
 def _check_auth(x_api_key: str | None) -> None:
@@ -332,6 +334,7 @@ def health():
         "clarity_note": "noise_scale (VITS's stochastic-expressiveness knob) is now tuned per emotion, all at or below the model's own default, for more consistent pronunciation - previously computed but silently discarded, now actually applied.",
         "voice_note": "This engine has ONE fixed voice per language - no true multi-speaker model backs it. On /dream-to-story, /stories/{id}/branch, and /characters/{id}/revive, dialogue lines attributed to a known named character get a deterministic per-character pitch/EQ treatment plus a slight speaking-pace offset on that same base voice (see voice_profile.py), and the specific treatment is chosen to fit that character's personality (a menacing villain leans deep and speaks a touch slower, a cheerful/young character leans bright and speaks a touch faster) rather than assigned arbitrarily - a real, audible differentiation, but still one underlying voice, not separate speakers.",
         "visual_note": "POST /dream-to-story accepts visual=true (off by default) to also generate a cover/scene image via OpenAI's image API, depicting the story's single strongest visual moment - a two-step process (derive an English scene prompt from the native-script story, then generate from that). Retrieve via GET /stories/{id}/image. Off by default: a real per-image cost/latency commitment, unlike the cheap text classification calls elsewhere. Generation failure is non-fatal to the request (audio still returns) and reported via X-Has-Image/X-Image-Error-B64 headers.",
+        "video_note": "POST /dream-to-story also accepts video=true (implies visual=true) to compose a real, shareable MP4 (the cover image held for the full narration) via ffmpeg - retrieve via GET /stories/{id}/video. This is NOT AI-generated moving video (that needs a fundamentally different, much slower/costlier generative-video model this service doesn't have access to) - it's a static-image-plus-audio mux, honest about what it is.",
     }
 
 
@@ -495,7 +498,7 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
             personality_hints[char["name"]] = char["voice_profile"]
 
     image_error = None
-    if req.visual:
+    if req.visual or req.video:
         try:
             image_bytes = generate_story_image(story_text)
             db.save_story_image(story_id, image_bytes)
@@ -520,6 +523,12 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
         logger.exception("dream-to-story synthesis failed for lang=%s", lang)
         raise HTTPException(status_code=500, detail="Speech generation failed")
     _metrics["synth_seconds_total"] += time.time() - t0
+    wav_bytes = _wav_bytes(audio, sr)
+
+    if req.video:
+        # Only persisted when video was requested - routine narration-
+        # only requests don't carry this hundred-KB-to-MB blob into the DB.
+        db.save_story_audio(story_id, wav_bytes)
 
     story_b64 = base64.b64encode(story_text.encode("utf-8")).decode("ascii")
     headers = {
@@ -528,12 +537,14 @@ def dream_to_story(req: DreamToStoryRequest, x_api_key: str | None = Header(defa
         "X-Story-Id": str(story_id),
         "X-Character-Ids": ",".join(str(c) for c in character_ids),
     }
-    if req.visual:
+    if req.visual or req.video:
         headers["X-Has-Image"] = "true" if image_error is None else "false"
         if image_error:
             headers["X-Image-Error-B64"] = base64.b64encode(image_error.encode("utf-8")).decode("ascii")
+    if req.video:
+        headers["X-Video-Available"] = "true" if image_error is None else "false"
     return Response(
-        content=_wav_bytes(audio, sr),
+        content=wav_bytes,
         media_type="audio/wav",
         headers=headers,
     )
@@ -565,6 +576,31 @@ def get_story_image(story_id: int):
     if image_bytes is None:
         raise HTTPException(status_code=404, detail=f"Story {story_id} has no generated image")
     return Response(content=image_bytes, media_type="image/png")
+
+
+@app.get("/stories/{story_id}/video")
+def get_story_video(story_id: int):
+    """Composes (on demand, not cached - ffmpeg muxing a still image
+    against an existing audio track is fast, a few seconds at most) an
+    MP4 from a story's stored cover image and narration audio. Both only
+    exist if the story was created with video=true. 404 if either is
+    missing, 500 if ffmpeg itself fails."""
+    story = db.get_story(story_id)
+    if not story:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+    image_bytes = db.get_story_image(story_id)
+    audio_bytes = db.get_story_audio(story_id)
+    if image_bytes is None or audio_bytes is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Story {story_id} is missing {'an image' if image_bytes is None else 'audio'} "
+                   f"- video requires the story to have been created with video=true",
+        )
+    try:
+        video_bytes = compose_video(image_bytes, audio_bytes)
+    except VideoGenError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return Response(content=video_bytes, media_type="video/mp4")
 
 
 @app.get("/characters")

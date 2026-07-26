@@ -53,6 +53,35 @@ def test_get_story_image_missing_story_returns_none(fresh_db):
     assert fresh_db.get_story_image(99999) is None
 
 
+def test_story_audio_round_trip(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    assert fresh_db.get_story_audio(story_id) is None
+    assert fresh_db.get_story(story_id)["has_audio"] == 0
+
+    fake_wav_bytes = b"RIFF....WAVEfmt fakeaudiodata"
+    fresh_db.save_story_audio(story_id, fake_wav_bytes)
+
+    assert fresh_db.get_story_audio(story_id) == fake_wav_bytes
+    assert fresh_db.get_story(story_id)["has_audio"] == 1
+
+
+def test_get_story_excludes_raw_audio_blob(fresh_db):
+    story_id = fresh_db.save_story(title="T", language="hin", text="text")
+    fresh_db.save_story_audio(story_id, b"some audio bytes")
+    story = fresh_db.get_story(story_id)
+    assert "audio" not in story
+
+
+def test_list_stories_reports_has_audio(fresh_db):
+    with_audio = fresh_db.save_story(title="A", language="hin", text="a")
+    without_audio = fresh_db.save_story(title="B", language="hin", text="b")
+    fresh_db.save_story_audio(with_audio, b"bytes")
+
+    stories = {s["id"]: s for s in fresh_db.list_stories()}
+    assert stories[with_audio]["has_audio"] == 1
+    assert stories[without_audio]["has_audio"] == 0
+
+
 def test_save_and_get_character_with_voice_profile(fresh_db):
     story_id = fresh_db.save_story(title="T", language="hin", text="text")
     char_id = fresh_db.save_character(

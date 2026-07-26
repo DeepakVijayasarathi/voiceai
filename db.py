@@ -47,6 +47,7 @@ def init_db() -> None:
                 parent_story_id INTEGER REFERENCES stories(id),
                 branch_note TEXT,
                 image BLOB,
+                audio BLOB,
                 created_at TEXT DEFAULT (datetime('now'))
             );
             CREATE TABLE IF NOT EXISTS characters (
@@ -77,6 +78,9 @@ def init_db() -> None:
         if "image" not in existing_story_columns:
             conn.execute("ALTER TABLE stories ADD COLUMN image BLOB")
             conn.commit()
+        if "audio" not in existing_story_columns:
+            conn.execute("ALTER TABLE stories ADD COLUMN audio BLOB")
+            conn.commit()
 
 
 def save_story(title: str, language: str, text: str, parent_story_id: int | None = None, branch_note: str | None = None) -> int:
@@ -91,15 +95,18 @@ def save_story(title: str, language: str, text: str, parent_story_id: int | None
 
 
 def get_story(story_id: int) -> dict | None:
-    """Excludes the raw image BLOB (use get_story_image for that) - a
-    JSON story record shouldn't carry a multi-hundred-KB image payload
-    inline; `has_image` tells the caller whether one exists."""
+    """Excludes the raw image/audio BLOBs (use get_story_image/
+    get_story_audio for those) - a JSON story record shouldn't carry
+    multi-hundred-KB payloads inline; has_image/has_audio tell the
+    caller whether they exist (has_audio also means GET .../video can
+    compose a video from them)."""
     conn = _get_conn()
     with _lock:
         row = conn.execute(
             """
             SELECT id, title, language, text, parent_story_id, branch_note,
-                   created_at, (image IS NOT NULL) AS has_image
+                   created_at, (image IS NOT NULL) AS has_image,
+                   (audio IS NOT NULL) AS has_audio
             FROM stories WHERE id = ?
             """,
             (story_id,),
@@ -113,7 +120,8 @@ def list_stories(limit: int = 50) -> list[dict]:
         rows = conn.execute(
             """
             SELECT id, title, language, parent_story_id, branch_note,
-                   created_at, (image IS NOT NULL) AS has_image
+                   created_at, (image IS NOT NULL) AS has_image,
+                   (audio IS NOT NULL) AS has_audio
             FROM stories ORDER BY id DESC LIMIT ?
             """,
             (limit,),
@@ -133,6 +141,24 @@ def get_story_image(story_id: int) -> bytes | None:
     with _lock:
         row = conn.execute("SELECT image FROM stories WHERE id = ?", (story_id,)).fetchone()
     return bytes(row["image"]) if row and row["image"] is not None else None
+
+
+def save_story_audio(story_id: int, audio_bytes: bytes) -> None:
+    """Only populated when a caller requested video composition (see
+    app.py's /dream-to-story `video` field) - routine narration-only
+    requests don't persist audio, to avoid bloating the DB with
+    hundred-KB-to-MB blobs nobody asked to keep."""
+    conn = _get_conn()
+    with _lock:
+        conn.execute("UPDATE stories SET audio = ? WHERE id = ?", (audio_bytes, story_id))
+        conn.commit()
+
+
+def get_story_audio(story_id: int) -> bytes | None:
+    conn = _get_conn()
+    with _lock:
+        row = conn.execute("SELECT audio FROM stories WHERE id = ?", (story_id,)).fetchone()
+    return bytes(row["audio"]) if row and row["audio"] is not None else None
 
 
 def save_character(
